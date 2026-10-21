@@ -1,0 +1,10 @@
+packages:
+  - "packages/*"
+
+allowBuilds:
+  # Tailwind's native engine ships as a prebuilt optional package; its fallback build script isn't needed.
+  '@tailwindcss/oxide': false
+  esbuild: true
+
+onlyBuiltDependencies:
+  - esbuild

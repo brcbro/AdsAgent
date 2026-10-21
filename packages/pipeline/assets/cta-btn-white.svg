@@ -1,0 +1,4 @@
+<svg width="900" height="96" xmlns="http://www.w3.org/2000/svg">
+  <rect width="900" height="96" rx="48" ry="48" fill="#FFFFFF" stroke="#2563EB" stroke-width="3"/>
+  <text x="450" y="58" font-family="Arial, Helvetica, sans-serif" font-weight="600" font-size="34" fill="#2563EB" text-anchor="middle">Klicke unten auf den Link!</text>
+</svg>

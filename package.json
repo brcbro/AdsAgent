@@ -1,0 +1,28 @@
+{
+  "name": "ai-ads",
+  "private": true,
+  "scripts": {
+    "golden": "pnpm --filter @ai-ads/pipeline run golden",
+    "test-ad": "pnpm --filter @ai-ads/pipeline run test-ad",
+    "produce": "pnpm --filter @ai-ads/pipeline run produce",
+    "voice-preview": "pnpm --filter @ai-ads/pipeline run voice-preview",
+    "local-preview": "pnpm --filter @ai-ads/pipeline run local-preview",
+    "batch": "pnpm --filter @ai-ads/pipeline run batch-run trading-intro",
+    "batch-run": "pnpm --filter @ai-ads/pipeline run batch-run",
+    "avatars": "pnpm --filter @ai-ads/pipeline run avatars",
+    "dashboard": "pnpm --filter @ai-ads/dashboard run start",
+    "music-sync": "pnpm --filter @ai-ads/pipeline run music-sync",
+    "factory": "pnpm --filter @ai-ads/pipeline run factory",
+    "broll-sync": "pnpm --filter @ai-ads/pipeline run broll-sync",
+    "broll-catalog": "pnpm --filter @ai-ads/pipeline run broll-catalog",
+    "preview": "pnpm --filter @ai-ads/remotion run preview",
+    "typecheck": "pnpm --filter @ai-ads/pipeline run typecheck && pnpm --filter @ai-ads/performance run typecheck && pnpm --filter @ai-ads/dashboard run typecheck",
+    "test": "pnpm --filter @ai-ads/pipeline run test && pnpm --filter @ai-ads/performance run test",
+    "dashboard:dev": "pnpm --filter @ai-ads/dashboard run dev:web",
+    "test:ui": "pnpm --filter @ai-ads/dashboard run test:e2e",
+    "briefings": "pnpm --filter @ai-ads/pipeline run briefings"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}

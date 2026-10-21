@@ -1,0 +1,30 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dashboard",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@ai-ads/dashboard",
+        "run",
+        "serve"
+      ],
+      "port": 3847
+    },
+    {
+      "name": "dashboard-3848",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@ai-ads/dashboard",
+        "run",
+        "serve"
+      ],
+      "env": {
+        "DASHBOARD_PORT": "3848"
+      },
+      "port": 3848
+    }
+  ]
+}

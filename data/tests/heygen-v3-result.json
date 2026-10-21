@@ -1,0 +1,60 @@
+{
+  "checkedAt": "2026-10-16T11:00:32.551Z",
+  "projectId": "agent_540336f45f024f1790dba50d84bd0e86",
+  "videoId": "a8dc29877f9b319d3f4e3aeb70833443",
+  "status": "completed",
+  "hasVideo": true,
+  "duration": 10.2149,
+  "balance": {
+    "billingType": "wallet",
+    "remainingBalance": 14.18,
+    "currency": "usd"
+  },
+  "quality": {
+    "passed": true,
+    "checkedAt": "2026-10-16T10:58:11.004Z",
+    "durationSeconds": 10.233333,
+    "checks": [
+      {
+        "name": "Playable video",
+        "result": "pass",
+        "detail": "Full file decoded with FFmpeg"
+      },
+      {
+        "name": "Video format",
+        "result": "pass",
+        "detail": "1080 × 1920"
+      },
+      {
+        "name": "Audible audio",
+        "result": "pass",
+        "detail": "Mean -22.0 dB; peak -4.5 dB"
+      },
+      {
+        "name": "Target duration",
+        "result": "pass",
+        "detail": "10.2s actual / 10s requested"
+      },
+      {
+        "name": "Caption timing",
+        "result": "pass",
+        "detail": "22 timed words checked for order and bounds"
+      },
+      {
+        "name": "Caption safe area",
+        "result": "pass",
+        "detail": "Caption baseline 30% from bottom"
+      },
+      {
+        "name": "B-roll footage",
+        "result": "pass",
+        "detail": "4 cuts; source files checked"
+      },
+      {
+        "name": "Timeline coverage",
+        "result": "pass",
+        "detail": "No gaps or invalid segment ranges"
+      }
+    ]
+  }
+}

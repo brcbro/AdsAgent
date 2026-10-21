@@ -1,0 +1,4 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "include": ["src/agent-worker.ts", "src/agent-store.test.ts", "src/video-quality.test.ts"]
+}

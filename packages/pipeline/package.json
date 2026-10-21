@@ -1,0 +1,38 @@
+{
+  "name": "@ai-ads/pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./produce": "./src/produce.ts"
+  },
+  "scripts": {
+    "golden": "tsx src/goldenpath.ts",
+    "test-ad": "tsx src/testad.ts",
+    "produce": "tsx src/produce-cli.ts",
+    "voice-preview": "tsx src/voice-preview.ts",
+    "local-preview": "tsx src/local-preview.ts",
+    "batch-run": "tsx src/batch-run.ts",
+    "factory": "tsx src/factory.ts",
+    "avatars": "tsx src/avatars-cli.ts",
+    "broll-sync": "tsx src/broll-index.ts sync",
+    "broll-catalog": "tsx src/broll-index.ts catalog",
+    "music-sync": "tsx src/sync-music.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test src/*.test.ts",
+    "briefings": "tsx src/briefings-cli.ts"
+  },
+  "dependencies": {
+    "@ai-ads/core": "workspace:*",
+    "@resvg/resvg-js": "^2.6.2",
+    "dotenv": "^16.4.7",
+    "zod": "^4.0.0",
+    "@ai-ads/performance": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

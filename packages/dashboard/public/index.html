@@ -1,0 +1,1304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Ad Factory</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0a0e;
+      --bg2: #111116;
+      --bg3: #18181f;
+      --border: #252530;
+      --border2: #333340;
+      --text: #e4e4ec;
+      --muted: #7a7a8c;
+      --accent: #ffd700;
+      --accent-dim: rgba(255,215,0,0.12);
+      --red: #ff4757;
+      --green: #2ed573;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* ── HEADER ── */
+    header { padding: 10px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; background: var(--bg2); flex-shrink: 0; }
+    header .logo { font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
+    header .logo span { color: var(--accent); }
+    header .sep { width: 1px; height: 16px; background: var(--border2); }
+    header .tagline { font-size: 12px; color: var(--muted); }
+    header .spacer { flex: 1; }
+    header .status-pill { font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 600; }
+    header .status-pill.idle { background: rgba(42,42,50,0.8); color: var(--muted); }
+    header .status-pill.rendering { background: rgba(255,215,0,0.15); color: var(--accent); border: 1px solid rgba(255,215,0,0.3); }
+
+    /* ── LAYOUT ── */
+    .layout { flex: 1; display: grid; grid-template-columns: 188px 1fr 360px; min-height: 0; overflow: hidden; }
+
+    /* ── LEFT PANEL ── */
+    .left-panel { border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--bg2); overflow: hidden; }
+    .left-panel .panel-head { padding: 10px 10px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .left-panel .panel-head button { width: 100%; background: var(--accent); color: #111; border: none; border-radius: 6px; padding: 8px 0; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .left-panel .panel-head button:hover { background: #ffe033; }
+    .project-list { flex: 1; overflow-y: auto; padding: 6px; }
+    .project-item { padding: 8px 10px; border-radius: 7px; cursor: pointer; margin-bottom: 3px; border: 1px solid transparent; transition: all 0.12s; }
+    .project-item:hover { background: var(--bg3); }
+    .project-item.active { background: var(--bg3); border-color: var(--border2); }
+    .project-item .pi-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .project-item .pi-status { display: flex; align-items: center; gap: 5px; margin-top: 3px; }
+    .project-item .pi-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .pi-dot.draft { background: var(--border2); }
+    .pi-dot.generating, .pi-dot.rendering { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+    .pi-dot.done { background: var(--green); }
+    .pi-dot.error { background: var(--red); }
+    .project-item .pi-label { font-size: 10px; color: var(--muted); }
+
+    /* ── CENTER ── */
+    .center { display: flex; flex-direction: column; background: var(--bg); overflow: hidden; }
+    .preview-area { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px 16px 8px; min-height: 0; position: relative; }
+    .no-video { color: var(--muted); font-size: 13px; text-align: center; line-height: 1.6; }
+    .no-video p { margin-top: 6px; font-size: 11px; opacity: 0.6; }
+
+    /* Video wrapper + overlay */
+    .preview-frame { border-radius: 10px; overflow: hidden; background: #000; max-width: 100%; }
+    .preview-frame.ratio-169 { aspect-ratio: 16/9; max-height: calc(100vh - 220px); width: min(100%, calc((100vh - 220px) * 16 / 9)); }
+    .preview-frame.ratio-916 { aspect-ratio: 9/16; max-height: calc(100vh - 220px); width: auto; }
+    .preview-frame img, .preview-frame video { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .stop-btn { flex-shrink: 0; background: rgba(255,71,87,0.15); border: 1px solid var(--red); color: var(--red); border-radius: 7px; padding: 6px 14px; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .stop-btn:hover { background: rgba(255,71,87,0.25); }
+    .video-wrapper { position: relative; display: inline-flex; cursor: pointer; }
+    .video-wrapper.ratio-169 { aspect-ratio: 16/9; max-height: calc(100vh - 220px); width: min(100%, calc((100vh - 220px) * 16 / 9)); }
+    .video-wrapper.ratio-916 { aspect-ratio: 9/16; max-height: calc(100vh - 220px); width: auto; }
+    .video-wrapper video { width: 100%; height: 100%; max-height: calc(100vh - 220px); border-radius: 10px; background: #000; display: block; object-fit: contain; }
+    .caption-overlay { position: absolute; inset: 0; border-radius: 10px; pointer-events: none; z-index: 10; }
+    .caption-overlay.active { background: rgba(0,0,0,0.22); pointer-events: all; }
+    .caption-pos-bar {
+      position: absolute; left: 8px; right: 8px; height: 2px;
+      background: rgba(255,215,0,0.45); transform: translateY(50%);
+      transition: background 0.15s, height 0.15s; pointer-events: all; cursor: row-resize;
+    }
+    .caption-overlay.active .caption-pos-bar {
+      height: 3px; background: var(--accent);
+      cursor: row-resize; box-shadow: 0 0 8px rgba(255,215,0,0.6);
+    }
+    .caption-overlay.active .caption-pos-bar::before {
+      content: "⬘ Caption Line — drag to reposition";
+      position: absolute; left: 50%; transform: translateX(-50%);
+      bottom: 6px; white-space: nowrap;
+      font-size: 10px; font-weight: 600; color: var(--accent);
+      background: rgba(0,0,0,0.75); padding: 2px 8px; border-radius: 4px;
+      pointer-events: none;
+    }
+    .caption-edit-hint {
+      position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+      font-size: 10px; color: rgba(255,255,255,0.4);
+      background: rgba(0,0,0,0.55); padding: 3px 10px; border-radius: 20px;
+      white-space: nowrap; pointer-events: none;
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .video-wrapper:hover .caption-edit-hint { opacity: 1; }
+    .caption-edit-mode-badge {
+      position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+      font-size: 11px; font-weight: 700; color: #111; background: var(--accent);
+      padding: 3px 10px; border-radius: 20px; pointer-events: none;
+      opacity: 0; transition: opacity 0.2s; white-space: nowrap;
+    }
+    .caption-overlay.active .caption-edit-mode-badge { opacity: 1; }
+
+    /* ── PLAYER CONTROLS BAR ── */
+    .player-bar { flex-shrink: 0; padding: 8px 16px; border-top: 1px solid var(--border); background: var(--bg2); display: flex; align-items: center; gap: 12px; }
+    .speed-section { display: flex; align-items: center; gap: 6px; flex: 1; }
+    .speed-section .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); white-space: nowrap; }
+    .speed-btn { width: 26px; height: 26px; border: 1px solid var(--border2); border-radius: 5px; background: var(--bg3); color: var(--text); cursor: pointer; font-size: 14px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .speed-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .speed-value { font-size: 13px; font-weight: 700; color: var(--accent); min-width: 44px; text-align: center; flex-shrink: 0; }
+    .speed-range { flex: 1; max-width: 140px; accent-color: var(--accent); cursor: pointer; }
+    .speed-presets { display: flex; gap: 4px; }
+    .speed-pre { padding: 3px 7px; border: 1px solid var(--border2); border-radius: 5px; background: var(--bg3); color: var(--muted); font-size: 11px; cursor: pointer; white-space: nowrap; transition: all 0.12s; }
+    .speed-pre:hover, .speed-pre.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+    .download-btn { flex-shrink: 0; background: var(--bg3); border: 1px solid var(--border2); color: var(--text); border-radius: 7px; padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.12s; white-space: nowrap; }
+    .download-btn:hover:not(:disabled) { border-color: var(--green); color: var(--green); }
+    .download-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .processing { display: flex; align-items: center; gap: 10px; color: var(--accent); font-size: 13px; padding: 8px 0; }
+    .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,215,0,0.2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── RIGHT PANEL ── */
+    .right-panel { border-left: 1px solid var(--border); display: flex; flex-direction: column; background: var(--bg2); overflow: hidden; }
+    .avatar-section { flex-shrink: 0; padding: 10px; border-bottom: 1px solid var(--border); }
+    .avatar-card-selected { display: flex; gap: 10px; align-items: center; padding: 8px 10px; background: var(--bg3); border: 1px solid var(--border2); border-radius: 8px; cursor: pointer; transition: border-color 0.15s; }
+    .avatar-card-selected:hover { border-color: var(--accent); }
+    .avatar-card-selected.has-avatar { border-color: rgba(255,215,0,0.35); }
+    .avatar-card-selected img { width: 48px; height: 64px; border-radius: 6px; object-fit: cover; background: #222; flex-shrink: 0; }
+    .avatar-card-selected .av-info { flex: 1; min-width: 0; }
+    .avatar-card-selected .av-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .avatar-card-selected .av-hint { font-size: 10px; color: var(--muted); margin-top: 3px; }
+    .avatar-card-selected .av-chevron { color: var(--muted); font-size: 14px; flex-shrink: 0; }
+
+    /* Tabs */
+    .tabs { flex-shrink: 0; display: flex; overflow-x: auto; border-bottom: 1px solid var(--border); padding: 0 6px; background: var(--bg2); }
+    .tab-btn { padding: 9px 10px; font-size: 11px; font-weight: 600; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; letter-spacing: 0.03em; text-transform: uppercase; border: none; background: none; transition: all 0.12s; white-space: nowrap; }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--accent); border-bottom: 2px solid var(--accent); }
+    .tab-content { flex: 1; overflow-y: auto; padding: 10px; }
+
+    /* Controls inside tabs */
+    .field-label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 12px 0 6px; }
+    .field-label:first-child { margin-top: 0; }
+    input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+    input, select, textarea { width: 100%; background: var(--bg3); border: 1px solid var(--border2); color: var(--text); border-radius: 6px; padding: 7px 10px; font-size: 12px; }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: rgba(255,215,0,0.45); }
+    textarea { min-height: 100px; resize: vertical; font-family: inherit; line-height: 1.5; }
+    .row { display: flex; gap: 8px; align-items: center; }
+    .row-val { font-size: 11px; color: var(--muted); min-width: 36px; text-align: right; }
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: var(--bg3); border: 1px solid var(--border2); border-radius: 6px; margin-bottom: 6px; cursor: pointer; }
+    .toggle-row label { font-size: 12px; cursor: pointer; }
+    input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+
+    /* Caption presets grid */
+    .caption-live-preview { aspect-ratio: 9/16; max-height: 140px; width: auto; margin: 0 auto 10px; border-radius: 8px; border: 1px solid var(--border2); background: linear-gradient(160deg, #1e2840 0%, #0d0d18 60%); display: flex; align-items: flex-end; justify-content: center; padding: 0 12px 18px; position: relative; overflow: hidden; }
+    .cap-label { position: absolute; top: 6px; left: 8px; font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 0.05em; }
+    .cap-sample { text-align: center; line-height: 1.2; max-width: 95%; word-break: break-word; }
+    .presets-grid { display: grid; grid-template-columns: 1fr; gap: 8px; max-height: 340px; overflow-y: auto; padding-right: 2px; }
+    .preset-card { border: 1.5px solid var(--border2); border-radius: 8px; cursor: pointer; overflow: hidden; background: var(--bg3); transition: border-color 0.12s; display: grid; grid-template-columns: 92px 1fr; align-items: stretch; min-height: 78px; }
+    .preset-card:hover { border-color: #666; }
+    .preset-card.active { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(255,215,0,0.25); }
+    .preset-thumb { background: linear-gradient(160deg, #1e2840 0%, #0c0c16 60%); display: flex; align-items: center; justify-content: center; padding: 8px 6px; min-height: 78px; }
+    .preset-meta { display: flex; flex-direction: column; justify-content: center; padding: 8px 10px 8px 0; gap: 4px; min-width: 0; }
+    .preset-name { font-size: 12px; font-weight: 600; color: var(--text); text-align: left; background: none; padding: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .preset-mode { font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+    .preset-sample-text { font-size: 11px; color: var(--muted); line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+    /* Bottom send button */
+    .send-section { flex-shrink: 0; padding: 10px; border-top: 1px solid var(--border); background: var(--bg2); }
+    .send-btn { width: 100%; background: var(--accent); color: #111; border: none; border-radius: 8px; padding: 12px; font-size: 14px; font-weight: 800; cursor: pointer; letter-spacing: 0.02em; transition: background 0.12s; }
+    .send-btn.secondary { background: var(--bg3); color: var(--text); border: 1px solid var(--border2); margin-top: 6px; font-size: 12px; font-weight: 700; padding: 10px; }
+    .send-btn.secondary:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .send-btn:hover:not(:disabled) { background: #ffe033; }
+    .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .msg { font-size: 11px; margin-top: 8px; line-height: 1.4; padding: 6px 8px; border-radius: 5px; }
+    .msg.ok { color: #6f6; background: rgba(102,255,102,0.07); }
+    .msg.warn { color: var(--accent); background: var(--accent-dim); }
+    .msg.err { color: #f77; background: rgba(255,100,100,0.08); }
+
+    /* Avatar modal */
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 200; display: none; align-items: center; justify-content: center; padding: 20px; }
+    .modal-backdrop.open { display: flex; }
+    .modal { background: var(--bg2); border: 1px solid var(--border2); border-radius: 12px; width: min(960px, 100%); max-height: 90vh; display: flex; flex-direction: column; }
+    .modal-header { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .modal-header h2 { font-size: 14px; flex: 1; }
+    .modal-header input { flex: 2; min-width: 180px; margin: 0; }
+    .modal-body { padding: 14px; overflow-y: auto; flex: 1; }
+    .avatar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; }
+    .avatar-card { border: 2px solid var(--border); border-radius: 8px; overflow: hidden; cursor: pointer; background: var(--bg3); transition: border-color 0.12s; }
+    .avatar-card.selected { border-color: var(--accent); }
+    .avatar-card img { width: 100%; aspect-ratio: 3/4; object-fit: cover; display: block; background: #222; }
+    .avatar-card .av-label { padding: 5px 6px; font-size: 9px; color: #ccc; text-align: center; min-height: 32px; }
+    .modal-footer { padding: 10px 18px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
+    .modal-footer button { width: auto; min-width: 110px; padding: 8px 16px; border-radius: 7px; font-size: 13px; font-weight: 700; cursor: pointer; border: none; }
+    .btn-cancel { background: var(--bg3); border: 1px solid var(--border2) !important; color: var(--text); }
+    .btn-confirm { background: var(--accent); color: #111; }
+    .pager { display: flex; gap: 8px; align-items: center; justify-content: center; padding-top: 10px; }
+    .pager button { background: var(--bg3); border: 1px solid var(--border2); color: var(--text); border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
+    .pager button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    /* Steps / detail */
+    .steps { font-size: 11px; color: var(--muted); line-height: 1.5; }
+    details { margin-top: 8px; }
+    details summary { cursor: pointer; font-size: 11px; color: var(--muted); padding: 6px 0; user-select: none; }
+
+    /* Scrollbar styling */
+    .library-summary { padding: 10px; background: var(--accent-dim); border: 1px solid var(--border2); border-radius: 8px; font-size: 12px; line-height: 1.6; margin-bottom: 12px; }
+    .broll-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+    .broll-card { background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 7px; overflow: hidden; cursor: pointer; text-align: left; }
+    .broll-card:hover { border-color: var(--accent); }
+    .broll-card img { width: 100%; height: 84px; object-fit: cover; display: block; }
+    .broll-card span { display: block; padding: 6px; font-size: 10px; overflow-wrap: anywhere; }
+    .library-hint { font-size: 11px; color: var(--muted); line-height: 1.6; margin-top: 8px; }
+    #brollPlayer { width: 100%; max-height: 65vh; background: #000; }
+    .header-button { background: var(--bg3); color: var(--text); border: 1px solid var(--border2); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+    #agentOpen { color: var(--accent); border-color: var(--accent); }
+    .agent-workspace { position: fixed; inset: 49px 0 0; z-index: 40; background: var(--bg); display: grid; grid-template-columns: minmax(0, 1fr) 340px; }
+    .agent-workspace[hidden] { display: none; }
+    .agent-main { min-height: 0; display: flex; flex-direction: column; }
+    .agent-toolbar { display: flex; gap: 10px; align-items: center; padding: 14px; border-bottom: 1px solid var(--border); background: var(--bg2); }
+    .agent-toolbar h1 { font-size: 17px; white-space: nowrap; }
+    .agent-toolbar select { width: auto; flex: 1; min-width: 80px; margin: 0; }
+    .agent-messages { flex: 1; overflow-y: auto; padding: 18px; }
+    .agent-welcome { max-width: 580px; margin: 24px auto; line-height: 1.7; color: var(--muted); }
+    .agent-welcome h2 { color: var(--text); font-size: 23px; margin-bottom: 14px; }
+    .agent-welcome p { margin-bottom: 14px; }
+    .agent-message { margin-bottom: 14px; padding: 13px 15px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg2); font-size: 13px; line-height: 1.65; }
+    .agent-message strong { display: block; color: var(--accent); font-size: 11px; margin-bottom: 6px; }
+    .agent-message div { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .agent-message.user { background: var(--bg3); margin-left: 24px; }
+    .agent-composer { padding: 14px 18px; border-top: 1px solid var(--border); background: var(--bg2); }
+    .agent-composer textarea { width: 100%; resize: vertical; min-height: 70px; max-height: 180px; }
+    .agent-options { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 10px; font-size: 12px; }
+    .agent-options select { width: 82px; margin: 0; }
+    .agent-options label { margin: 0; display: flex; align-items: center; gap: 7px; }
+    .agent-options input { width: auto; }
+    #agentRun { width: auto; margin-left: auto; padding: 9px 20px; font-size: 13px; }
+    #agentNotice { color: var(--accent); font-size: 11px; line-height: 1.5; margin-top: 6px; }
+    .agent-queue { min-height: 0; overflow-y: auto; border-left: 1px solid var(--border); background: var(--bg2); padding: 14px; }
+    .agent-queue h2 { font-size: 15px; margin-bottom: 4px; }
+    #agentWorker { margin-bottom: 14px; }
+    .agent-job { border: 1px solid var(--border); border-radius: 9px; padding: 11px; margin-bottom: 10px; font-size: 11px; background: var(--bg); }
+    .agent-job.current-chat { border-color: var(--border2); }
+    .agent-job-head { display: flex; gap: 8px; align-items: start; justify-content: space-between; }
+    .agent-job-head strong { overflow-wrap: anywhere; font-size: 12px; }
+    .agent-job p { color: var(--muted); margin: 8px 0; line-height: 1.5; overflow-wrap: anywhere; }
+    .agent-job .agent-error { color: var(--red); }
+    .agent-badge { border-radius: 12px; padding: 3px 7px; white-space: nowrap; background: var(--bg3); color: var(--accent); font-size: 10px; }
+    .agent-badge.done, .agent-badge.approved { color: var(--green); }
+    .agent-badge.error, .agent-badge.needs_review { color: var(--red); }
+    .agent-job details { margin-top: 10px; }
+    .agent-job textarea { width: 100%; font-size: 12px; margin-top: 8px; }
+    .agent-checks, .agent-events { list-style: none; margin-top: 8px; color: var(--muted); line-height: 1.5; }
+    .agent-checks li, .agent-events li { padding: 5px 0; border-top: 1px solid var(--border); }
+    .agent-checks .pass strong { color: var(--green); }
+    .agent-checks .warn strong { color: var(--accent); }
+    .agent-checks .fail strong { color: var(--red); }
+    .agent-job-actions { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 10px; }
+    @media (max-width: 760px) { .agent-workspace { grid-template-columns: 1fr; overflow-y: auto; } .agent-main { min-height: 70vh; } .agent-queue { min-height: 200px; overflow: visible; } header .tagline { display: none; } }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">AI <span>Ad Factory</span></div>
+    <div class="sep"></div>
+    <div class="tagline" id="serviceSummary">Loading studio…</div>
+    <div class="spacer"></div>
+    <button class="header-button" id="agentOpen">✦ Agent Studio</button>
+    <button class="header-button" data-action="refresh-library">↻ Refresh</button>
+    <div class="status-pill idle" id="headerStatus">Ready</div>
+  </header>
+
+  <section class="agent-workspace" id="agentWorkspace" aria-label="Agent Studio">
+    <div class="agent-main">
+      <div class="agent-toolbar"><h1>Agent Studio</h1><select id="agentSession" aria-label="Agent conversation"></select><button class="header-button" id="agentNewChat">New Chat</button><button class="header-button" id="agentClose">Video Editor</button></div>
+      <div class="agent-messages" id="agentMessages" aria-live="polite"></div>
+      <form class="agent-composer" id="agentForm">
+        <textarea id="agentBrief" rows="3" maxlength="4000" placeholder="Tell the agent what German video to create, or ask it to revise the last script…" aria-label="Agent brief" required></textarea>
+        <div class="agent-options"><label for="agentDuration">Target <select id="agentDuration"><option value="10">10s</option><option value="20" selected>20s</option><option value="30">30s</option><option value="45">45s</option></select></label><label><input type="checkbox" id="agentAuto" checked> Automatically produce video</label><button class="send-btn" type="submit" id="agentRun">Run Agent</button></div>
+        <p class="library-hint">Claude scripts · ElevenLabs German voice · local B-roll · no HeyGen. Uncheck automatic production to review the script first. Model and new voice requests use API credits.</p>
+        <div id="agentNotice" role="status"></div>
+      </form>
+    </div>
+    <aside class="agent-queue"><h2>Persistent Queue</h2><p class="library-hint" id="agentWorker">Connecting…</p><div id="agentJobs"></div></aside>
+  </section>
+
+  <div class="layout">
+    <!-- LEFT: project list -->
+    <div class="left-panel">
+      <div class="panel-head">
+        <button data-action="new-video">+ New Video</button>
+      </div>
+      <div class="project-list" id="projects"></div>
+    </div>
+
+    <!-- CENTER: video + controls -->
+    <div class="center">
+      <div class="preview-area" id="preview">
+        <div class="no-video">
+          <div>Select a project</div>
+          <p>or click + New Video</p>
+        </div>
+      </div>
+      <div class="player-bar" id="playerBar">
+        <div class="speed-section">
+          <span class="lbl">Speed</span>
+          <button class="speed-btn" id="speedDown">−</button>
+          <span class="speed-value" id="speedDisplay">1.00×</span>
+          <button class="speed-btn" id="speedUp">+</button>
+          <input type="range" class="speed-range" id="speedRange" min="1" max="2" step="0.05" value="1" />
+          <div class="speed-presets">
+            <button class="speed-pre active" data-spd="1">1×</button>
+            <button class="speed-pre" data-spd="1.25">1.25×</button>
+            <button class="speed-pre" data-spd="1.5">1.5×</button>
+            <button class="speed-pre" data-spd="1.75">1.75×</button>
+            <button class="speed-pre" data-spd="2">2×</button>
+          </div>
+        </div>
+        <button class="stop-btn" id="stopBtn" style="display:none">■ Stop</button>
+        <button class="download-btn" id="downloadBtn" disabled>
+          ↓ Download
+        </button>
+      </div>
+    </div>
+
+    <!-- RIGHT: editor panel -->
+    <div class="right-panel">
+      <div class="avatar-section">
+        <div class="avatar-card-selected" id="avatarSelected" data-action="browse-avatars">
+          <img id="avatarPreviewImg" src="" alt="" style="display:none" />
+          <div class="av-info">
+            <div class="av-name" id="avatarName">No avatar selected</div>
+            <div class="av-hint">Click to choose avatar</div>
+          </div>
+          <span class="av-chevron">›</span>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button class="tab-btn" data-tab="broll" id="brollTab">B-roll</button>
+        <button class="tab-btn active" data-tab="caption">Captions</button>
+        <button class="tab-btn" data-tab="audio">Audio</button>
+        <button class="tab-btn" data-tab="script">Script</button>
+        <button class="tab-btn" data-tab="advanced">Advanced</button>
+      </div>
+      <div class="tab-content" id="tabContent"></div>
+
+      <div class="send-section">
+        <button class="send-btn" id="localPreviewBtn" data-action="local-preview" disabled>▶ Create Local Preview</button>
+        <p class="library-hint" style="margin:5px 0">German ElevenLabs voice + B-roll. No HeyGen required. New narration uses ElevenLabs credits.</p>
+        <button class="send-btn secondary" id="sendBtn" data-action="send" disabled>▶ Create Avatar Video (HeyGen)</button>
+        <button class="send-btn secondary" id="recaptionBtn" data-action="recaption" disabled>↻ Apply Edits (Reuse Voice / Source)</button>
+        <div class="msg" id="msg" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Avatar Modal -->
+  <div class="modal-backdrop" id="avatarModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Choose Avatar</h2>
+        <span id="avatarCount" style="font-size:11px;color:var(--muted)">—</span>
+        <input type="search" id="avatarSearch" placeholder="Search name, gender…" />
+        <label style="margin:0;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)">
+          <input type="checkbox" id="portraitOnly" style="width:auto" /> Talking-head only (9:16)
+        </label>
+      </div>
+      <div class="modal-body">
+        <div class="avatar-grid" id="avatarGrid"></div>
+        <div class="pager" id="avatarPager"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-cancel" data-action="avatar-cancel">Cancel</button>
+        <button type="button" class="btn-confirm" data-action="avatar-confirm">Use Avatar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="brollModal">
+    <div class="modal">
+      <div class="modal-header"><h2 id="brollPlayerTitle">Clip preview</h2></div>
+      <div class="modal-body"><video id="brollPlayer" controls playsinline></video></div>
+      <div class="modal-footer"><button class="btn-cancel" data-action="broll-close">Close Preview</button></div>
+    </div>
+  </div>
+
+  <script>
+    // ── STATE ──────────────────────────────────────────────────────────────
+    let projects = [], presets = [], musicTracks = [], current = null;
+    let brollCatalog = [], studioConfig = {}, brollQuery = "", brollCategory = "";
+    let pickerSelection = null, searchTimer = null;
+    let avatarPage = 1, avatarPages = 1, avatarQuery = "";
+    let pollTimer = null;
+    let currentSpeed = 1.0;
+    let activeTab = "broll";
+    let captionEditMode = false;
+    let captionDragData = null;
+
+    const DEFAULT_SCRIPT = "Trading ohne System ist wie Fahren ohne Lenkrad — irgendwann crasht es. In unserem Training lernst du Schritt für Schritt, wie echte Profis denken und handeln. Klare Regeln, Risikomanagement, diszipliniertes Handeln. Kein Hype — nur Methodik, die funktioniert. Melde dich an und starte heute mit Struktur statt Bauchgefühl.";
+
+    // ── UTILITIES ──────────────────────────────────────────────────────────
+    function esc(s) {
+      return String(s ?? "").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");
+    }
+    function aspectRatio() {
+      return current?.aspectRatio || "16:9";
+    }
+    function isLandscape() {
+      return aspectRatio() === "16:9";
+    }
+
+    async function cancelRender() {
+      if (!current) return;
+      setMsg("Stopping render…", "warn");
+      try {
+        await api("/api/render/cancel", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({ projectId: current.id }),
+        });
+        current.status = "draft";
+        renderAll();
+        setMsg("Render stopped.", "ok");
+      } catch (e) {
+        setMsg(String(e.message), "err");
+      }
+    }
+
+    function updateStopBtn() {
+      const btn = document.getElementById("stopBtn");
+      if (!btn) return;
+      const busy = current?.status === "generating" || current?.status === "rendering";
+      btn.style.display = busy ? "inline-flex" : "none";
+    }
+
+    async function api(path, opts) {
+      const r = await fetch(path, { cache: "no-store", ...opts });
+      if (!r.ok) throw new Error(await r.text());
+      return r.json();
+    }
+    function setMsg(text, cls) {
+      const el = document.getElementById("msg");
+      if (!el) return;
+      if (!text) { el.style.display = "none"; return; }
+      el.textContent = text;
+      el.className = "msg " + (cls || "");
+      el.style.display = "block";
+    }
+
+    // ── SPEED CONTROL ──────────────────────────────────────────────────────
+    function setSpeed(s) {
+      currentSpeed = Math.round(Math.min(2.0, Math.max(1.0, s)) * 100) / 100;
+      document.getElementById("speedDisplay").textContent = currentSpeed.toFixed(2) + "×";
+      const r = document.getElementById("speedRange");
+      if (r) r.value = currentSpeed;
+      // Update quick-preset active state
+      document.querySelectorAll(".speed-pre").forEach(b => {
+        b.classList.toggle("active", Math.abs(parseFloat(b.dataset.spd) - currentSpeed) < 0.001);
+      });
+      const v = document.querySelector("#preview video");
+      if (v) v.playbackRate = currentSpeed;
+    }
+    function changeSpeed(delta) { setSpeed(currentSpeed + delta); }
+
+    // ── DOWNLOAD ───────────────────────────────────────────────────────────
+    async function downloadVideo() {
+      if (!current || current.status !== "done") return;
+      try {
+        await api("/api/projects/" + encodeURIComponent(current.id) + "/download", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            projectId: current.id,
+            title: current.title,
+            captionPreset: current.captions?.presetId,
+            captionMode: (presets.find(p => p.id === current.captions?.presetId) || {}).mode,
+            avatarId: current.avatar?.heygenAvatarId,
+            avatarName: current.avatar?.name,
+            scriptPreview: current.scriptDe?.slice(0, 200),
+            playbackSpeed: currentSpeed,
+            bottomPercent: current.captions?.bottomPercent,
+            fontSize: current.captions?.fontSize,
+          })
+        });
+      } catch {}
+      const a = document.createElement("a");
+      a.href = "/api/video/" + encodeURIComponent(current.id) + "/final.mp4?t=" + Date.now();
+      a.download = (current.title || current.id) + ".mp4";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    // ── CAPTION POSITION DRAG ──────────────────────────────────────────────
+    function toggleCaptionEditMode(force) {
+      captionEditMode = typeof force === "boolean" ? force : !captionEditMode;
+      const overlay = document.querySelector(".caption-overlay");
+      if (overlay) overlay.classList.toggle("active", captionEditMode);
+    }
+
+    function setupCaptionOverlay() {
+      const previewEl = document.getElementById("preview");
+      const wrapper = previewEl?.querySelector(".video-wrapper");
+      const videoEl = wrapper?.querySelector("video");
+      if (!wrapper || !videoEl) return;
+      if (wrapper.dataset.overlayBound === "1") {
+        updateCaptionBarPos();
+        return;
+      }
+      wrapper.dataset.overlayBound = "1";
+
+      let overlay = wrapper.querySelector(".caption-overlay");
+      if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.className = "caption-overlay";
+        overlay.innerHTML = `
+          <div class="caption-pos-bar" id="captionPosBar"></div>
+          <div class="caption-edit-hint">Double-click video to move caption line</div>
+          <div class="caption-edit-mode-badge">Drag yellow line — then Apply Captions Only</div>
+        `;
+        wrapper.appendChild(overlay);
+      }
+
+      updateCaptionBarPos();
+
+      const onDbl = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleCaptionEditMode();
+      };
+      wrapper.addEventListener("dblclick", onDbl);
+
+      const bar = overlay.querySelector(".caption-pos-bar");
+      if (bar) {
+        bar.addEventListener("mousedown", (e) => {
+          if (!captionEditMode) toggleCaptionEditMode(true);
+          e.preventDefault();
+          e.stopPropagation();
+          captionDragData = { rect: wrapper.getBoundingClientRect() };
+          document.addEventListener("mousemove", doDrag);
+          document.addEventListener("mouseup", endDrag);
+        });
+      }
+    }
+
+    function updateCaptionBarPos() {
+      const bar = document.getElementById("captionPosBar");
+      if (!bar) return;
+      const pct = current?.captions?.bottomPercent ?? 18;
+      bar.style.bottom = pct + "%";
+    }
+
+    function doDrag(e) {
+      if (!captionDragData) return;
+      const { rect } = captionDragData;
+      const relY = e.clientY - rect.top;
+      const pct = Math.min(85, Math.max(5, (1 - relY / rect.height) * 100));
+      const bar = document.getElementById("captionPosBar");
+      if (bar) bar.style.bottom = Math.round(pct) + "%";
+      if (current) {
+        if (!current.captions) current.captions = {};
+        current.captions.bottomPercent = Math.round(pct);
+        // update slider in tab
+        const sl = document.getElementById("bottomPctSlider");
+        if (sl) { sl.value = Math.round(pct); document.getElementById("bottomPctLabel").textContent = Math.round(pct) + "%"; }
+      }
+    }
+
+    async function endDrag() {
+      document.removeEventListener("mousemove", doDrag);
+      document.removeEventListener("mouseup", endDrag);
+      captionDragData = null;
+      if (!current) return;
+      try {
+        await api("/api/projects/" + encodeURIComponent(current.id) + "/metadata", {
+          method: "PUT",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(current),
+        });
+      } catch {}
+    }
+
+    // ── PROJECTS ───────────────────────────────────────────────────────────
+    function renderProjects() {
+      const el = document.getElementById("projects");
+      if (!projects.length) {
+        el.innerHTML = `<p style="font-size:11px;color:var(--muted);padding:8px">No projects yet</p>`;
+        return;
+      }
+      el.innerHTML = projects.map(p => `
+        <div class="project-item ${current?.id === p.id ? "active" : ""}" data-id="${esc(p.id)}" title="${esc(p.title || p.id)}">
+          <div class="pi-name">${esc(p.title || p.id)}</div>
+          <div class="pi-status">
+            <div class="pi-dot ${esc(p.status || "draft")}"></div>
+            <span class="pi-label">${esc(p.status || "draft")}</span>
+          </div>
+        </div>
+      `).join("");
+      el.querySelectorAll(".project-item").forEach(el => {
+        el.onclick = () => selectProject(el.dataset.id);
+      });
+    }
+
+    async function selectProject(id) {
+      try {
+        current = await api("/api/projects/" + encodeURIComponent(id));
+        captionEditMode = false;
+        currentSpeed = 1.0;
+        renderAll();
+        setMsg(current.status === "error" ? current.error || "Render failed" : "", "err");
+        startPollIfNeeded();
+      } catch (e) { setMsg(String(e.message), "err"); }
+    }
+
+    function renderAll() {
+      renderProjects();
+      renderPreview();
+      renderAvatar();
+      renderTab(activeTab);
+      updateSendBtn();
+      updateStopBtn();
+    }
+
+    // ── PREVIEW ───────────────────────────────────────────────────────────
+    function renderPreview() {
+      const el = document.getElementById("preview");
+      const dlBtn = document.getElementById("downloadBtn");
+
+      if (!current) {
+        el.innerHTML = `<div class="no-video"><div>Select a project</div><p>or click + New Video</p></div>`;
+        dlBtn.disabled = true;
+        return;
+      }
+
+      if (current.status === "done") {
+        dlBtn.disabled = false;
+        const ratioCls = isLandscape() ? "ratio-169" : "ratio-916";
+        const src = "/api/video/" + encodeURIComponent(current.id) + "/final.mp4?t=" + Date.now();
+        let videoEl = el.querySelector("video");
+        if (!videoEl) {
+          el.innerHTML = `
+            <div class="video-wrapper ${ratioCls}">
+              <video controls src="${esc(src)}"></video>
+            </div>
+          `;
+          videoEl = el.querySelector("video");
+        } else {
+          const wrapper = el.querySelector(".video-wrapper");
+          if (wrapper) wrapper.className = "video-wrapper " + ratioCls;
+          videoEl.src = src;
+          videoEl.load();
+        }
+        if (videoEl) videoEl.playbackRate = currentSpeed;
+        setupCaptionOverlay();
+        return;
+      }
+
+      dlBtn.disabled = true;
+
+      if (current.status === "generating" || current.status === "rendering") {
+        updateStopBtn();
+        el.innerHTML = `
+          <div class="processing">
+            <div class="spinner"></div>
+            <span>Generating video… <span class="steps" id="stepsEl"></span></span>
+          </div>
+        `;
+        return;
+      }
+
+      if (current.avatar?.previewImageUrl) {
+        const ratioCls = isLandscape() ? "ratio-169" : "ratio-916";
+        el.innerHTML = `
+          <div class="preview-frame ${ratioCls}" style="margin:0 auto">
+            <img src="${esc(current.avatar.previewImageUrl)}" alt="" />
+          </div>
+          <p class="no-video" style="margin-top:10px">${isLandscape() ? "Horizontal 16:9" : "Vertical 9:16"} — click Create Video</p>
+        `;
+        return;
+      }
+
+      el.innerHTML = `<div class="no-video"><div>Project: ${esc(current.title || current.id)}</div><p>Choose an avatar and click Create Video</p></div>`;
+    }
+
+    // ── HEADER STATUS ─────────────────────────────────────────────────────
+    function updateHeaderStatus(rendering) {
+      const el = document.getElementById("headerStatus");
+      if (rendering) {
+        el.className = "status-pill rendering";
+        el.textContent = "Rendering…";
+      } else {
+        el.className = "status-pill idle";
+        el.textContent = "Ready";
+      }
+    }
+
+    // ── AVATAR DISPLAY ────────────────────────────────────────────────────
+    function renderAvatar() {
+      const card = document.getElementById("avatarSelected");
+      const img = document.getElementById("avatarPreviewImg");
+      const name = document.getElementById("avatarName");
+      if (current?.avatar?.heygenAvatarId) {
+        card.classList.add("has-avatar");
+        if (current.avatar.previewImageUrl) {
+          img.src = current.avatar.previewImageUrl;
+          img.style.display = "block";
+        } else {
+          img.style.display = "none";
+        }
+        name.textContent = current.avatar.name || "Avatar selected";
+      } else {
+        card.classList.remove("has-avatar");
+        img.style.display = "none";
+        name.textContent = current?.avatar?.name || "No avatar selected";
+      }
+      card.querySelector(".av-hint").textContent = !current?.avatar?.heygenAvatarId && current?.avatar?.name === "Local waveform preview"
+        ? "Local preview · saved voice and source" : "Click to choose avatar";
+    }
+
+    // ── SEND BUTTON STATE ─────────────────────────────────────────────────
+    function updateSendBtn() {
+      const btn = document.getElementById("sendBtn");
+      const recBtn = document.getElementById("recaptionBtn");
+      const localBtn = document.getElementById("localPreviewBtn");
+      const hasAvatar = !!current?.avatar?.heygenAvatarId;
+      const busy = current?.status === "generating" || current?.status === "rendering";
+      const done = current?.status === "done";
+      if (btn) btn.disabled = !hasAvatar || busy || !current;
+      if (recBtn) recBtn.disabled = !done || busy || !current;
+      if (localBtn) localBtn.disabled = busy || !current || !brollCatalog.length;
+    }
+
+    // ── TABS ──────────────────────────────────────────────────────────────
+    function renderTab(tab) {
+      activeTab = tab;
+      document.querySelectorAll(".tab-btn").forEach(b => {
+        b.classList.toggle("active", b.dataset.tab === tab);
+      });
+      const content = document.getElementById("tabContent");
+      if (!content) return;
+      if (tab === "broll") renderBrollTab(content);
+      else if (tab === "caption") renderCaptionTab(content);
+      else if (tab === "audio") renderAudioTab(content);
+      else if (tab === "script") renderScriptTab(content);
+      else if (tab === "advanced") renderAdvancedTab(content);
+    }
+
+    function clipTitle(clip) {
+      return clip.name.replace(/__.*(?=\.[^.]+$)/, "").replace(/\.[^.]+$/, "").replace(/_/g, " ");
+    }
+
+    function renderBrollTab(content) {
+      const counts = brollCatalog.reduce((all, clip) => { all[clip.category] = (all[clip.category] || 0) + 1; return all; }, {});
+      content.innerHTML = `
+        <div class="library-summary"><strong>${brollCatalog.length} B-roll clips ready</strong><br>${Object.entries(counts).map(([name, n]) => esc(name) + " " + n).join(" · ")}</div>
+        <details><summary>Edit B-roll Settings</summary>
+        <div class="toggle-row"><label for="brollOn">Use B-roll after intro</label><input type="checkbox" id="brollOn" ${current?.fullAvatar === false ? "checked" : ""} /></div>
+        <span class="field-label">Clip duration</span>
+        <select id="brollCut"><option value="1800">1.8 seconds</option><option value="2500">2.5 seconds</option><option value="3500">3.5 seconds</option></select>
+        <button class="send-btn secondary" id="saveBroll">Save B-roll Settings</button>
+        <p class="library-hint">Matching clips are selected automatically from this library. Save settings, then use Apply Edits to update a finished video.</p>
+        </details>
+        <span class="field-label">Browse library</span>
+        <select id="brollCategory"><option value="">All categories</option>${Object.keys(counts).map(name => `<option value="${esc(name)}">${esc(name)} (${counts[name]})</option>`).join("")}</select>
+        <input type="search" id="brollSearch" placeholder="Search clips…" value="${esc(brollQuery)}" aria-label="Search B-roll clips" />
+        <p class="library-hint" id="brollResults"></p><div class="broll-grid" id="brollGrid"></div>`;
+      const cutSelect = document.getElementById("brollCut");
+      const cut = String(current?.brollCutMs || 1800);
+      if (![...cutSelect.options].some(o => o.value === cut)) cutSelect.add(new Option((Number(cut)/1000) + " seconds", cut));
+      cutSelect.value = cut;
+      document.getElementById("brollOn").onchange = e => { if (current) current.fullAvatar = !e.target.checked; };
+      cutSelect.onchange = e => { if (current) current.brollCutMs = Number(e.target.value); };
+      document.getElementById("saveBroll").onclick = async () => {
+        if (!current) return;
+        try {
+          current = await api("/api/projects/" + encodeURIComponent(current.id) + "/metadata", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(collectForm()) });
+          setMsg("B-roll settings saved. Apply Edits to update the video.", "ok");
+        } catch (e) { setMsg(e.message, "err"); }
+      };
+      document.getElementById("brollCategory").value = brollCategory;
+      document.getElementById("brollCategory").onchange = e => { brollCategory = e.target.value; renderBrollGrid(); };
+      document.getElementById("brollSearch").oninput = e => { brollQuery = e.target.value; renderBrollGrid(); };
+      renderBrollGrid();
+    }
+
+    function renderBrollGrid() {
+      const query = brollQuery.toLowerCase().trim();
+      const clips = brollCatalog.filter(c => (!brollCategory || c.category === brollCategory) && (!query || [clipTitle(c), c.category, ...(c.tags || [])].join(" ").toLowerCase().includes(query)));
+      document.getElementById("brollResults").textContent = clips.length + " clips · click a thumbnail to preview";
+      const grid = document.getElementById("brollGrid");
+      grid.innerHTML = clips.map(c => `<button class="broll-card" data-clip="${brollCatalog.indexOf(c)}" title="${esc(clipTitle(c))}"><img loading="lazy" src="${esc(c.previewUrl)}" alt="${esc(clipTitle(c))}" /><span>${esc(clipTitle(c))}</span></button>`).join("") || '<p class="library-hint">No matching clips.</p>';
+      grid.querySelectorAll(".broll-card").forEach(button => { button.onclick = () => {
+        const clip = brollCatalog[Number(button.dataset.clip)];
+        document.getElementById("brollPlayerTitle").textContent = clipTitle(clip);
+        document.getElementById("brollPlayer").src = clip.clipUrl;
+        document.getElementById("brollModal").classList.add("open");
+      }; });
+    }
+
+    function closeBrollPreview() {
+      const player = document.getElementById("brollPlayer");
+      player.pause(); player.removeAttribute("src"); player.load();
+      document.getElementById("brollModal").classList.remove("open");
+    }
+
+    async function refreshLibrary() {
+      try {
+        [projects, brollCatalog] = await Promise.all([api("/api/projects"), api("/api/broll/catalog")]);
+        document.getElementById("brollTab").textContent = "B-roll (" + brollCatalog.length + ")";
+        renderProjects();
+        if (activeTab === "broll") renderTab("broll");
+        setMsg("Projects and B-roll library refreshed.", "ok");
+      } catch (e) { setMsg(e.message, "err"); }
+    }
+
+    // ── CAPTION TAB ───────────────────────────────────────────────────────
+    function captionStyleCss(p, fontSize) {
+      const stroke = p.stroke && p.stroke !== "none" ? `-webkit-text-stroke:${p.stroke};` : "";
+      const shadow = p.shadow && p.shadow !== "none" ? `text-shadow:${p.shadow};` : "";
+      return `font-family:${p.fontFamily};font-weight:${p.fontWeight};font-size:${fontSize}px;color:${p.color};${stroke}${shadow}letter-spacing:${p.letterSpacing || "0"};`;
+    }
+
+    function captionSampleInner(p, fontSize) {
+      const pad = p.background && p.background !== "transparent"
+        ? `padding:${Math.round(fontSize * 0.28)}px ${Math.round(fontSize * 0.45)}px;border-radius:${Math.round(fontSize * 0.25)}px;background:${p.background};display:inline-block;`
+        : "";
+      if (p.mode === "word") {
+        const active = p.activeColor || p.color;
+        return `<span style="${captionStyleCss(p, fontSize)}${pad}"><span style="color:${active}">Trading</span></span>`;
+      }
+      return `<span class="cap-sample" style="${captionStyleCss(p, fontSize)}${pad}">Die meisten Trader scheitern</span>`;
+    }
+
+    function renderCaptionTab(content) {
+      const c = current?.captions || {};
+      const pid = c.presetId || "meta-clean";
+      const p = presets.find(x => x.id === pid) || presets[0] || {};
+      const fontSize = c.fontSize || p.fontSize || 32;
+      const bottomPct = c.bottomPercent ?? p.bottomPercent ?? 18;
+
+      content.innerHTML = `
+        <div class="caption-live-preview" id="captionLiveBig">
+          <span class="cap-label">${esc(p.name || "")} — preview</span>
+          ${captionSampleInner(p, Math.max(9, Math.round(fontSize * 0.32)))}
+        </div>
+
+        <span class="field-label">Font Size</span>
+        <div class="row">
+          <input type="range" id="fontSizeSlider" min="20" max="54" value="${fontSize}" />
+          <span class="row-val" id="fontSizeLabel">${fontSize}px</span>
+        </div>
+
+        <span class="field-label">Caption Position (Bottom %)</span>
+        <div class="row">
+          <input type="range" id="bottomPctSlider" min="5" max="85" value="${bottomPct}" />
+          <span class="row-val" id="bottomPctLabel">${bottomPct}%</span>
+        </div>
+        <p style="font-size:10px;color:var(--muted);margin-top:4px">Double-click the video or drag the yellow line, then click Apply Captions Only</p>
+
+        <span class="field-label">Style Preset</span>
+        <div class="presets-grid" id="presetsGrid"></div>
+      `;
+
+      // Font size handler
+      document.getElementById("fontSizeSlider").oninput = e => {
+        const v = Number(e.target.value);
+        document.getElementById("fontSizeLabel").textContent = v + "px";
+        if (current) { if (!current.captions) current.captions = {}; current.captions.fontSize = v; }
+        updateCaptionPreview();
+      };
+
+      // Bottom % handler
+      document.getElementById("bottomPctSlider").oninput = e => {
+        const v = Number(e.target.value);
+        document.getElementById("bottomPctLabel").textContent = v + "%";
+        if (current) { if (!current.captions) current.captions = {}; current.captions.bottomPercent = v; }
+        updateCaptionBarPos();
+      };
+
+      // Build presets grid
+      const grid = document.getElementById("presetsGrid");
+      presets.forEach(pr => {
+        const thumbSz = Math.max(14, Math.round((pr.fontSize || 32) * 0.42));
+        const sampleText = pr.mode === "word"
+          ? `<span style="${captionStyleCss(pr, thumbSz)}"><span style="color:${pr.activeColor || pr.color}">Trading</span></span>`
+          : `<span style="${captionStyleCss(pr, thumbSz)}">Die meisten Trader</span>`;
+        const d = document.createElement("div");
+        d.className = "preset-card" + (pr.id === pid ? " active" : "");
+        d.innerHTML = `
+          <div class="preset-thumb">${sampleText}</div>
+          <div class="preset-meta">
+            <div class="preset-name">${esc(pr.name)}</div>
+            <div class="preset-mode">${pr.mode === "word" ? "Word by word" : "Phrase"}</div>
+            <div class="preset-sample-text">${pr.mode === "word" ? "One word at a time — Instagram style" : "Karaoke phrase highlight"}</div>
+          </div>
+        `;
+        d.onclick = () => {
+          if (!current) return;
+          if (!current.captions) current.captions = {};
+          current.captions.presetId = pr.id;
+          current.captions.fontSize = pr.fontSize;
+          renderCaptionTab(content);
+        };
+        grid.appendChild(d);
+      });
+    }
+
+    function updateCaptionPreview() {
+      if (!current) return;
+      const pid = current.captions?.presetId || "meta-clean";
+      const p = presets.find(x => x.id === pid) || presets[0];
+      if (!p) return;
+      const sz = current.captions?.fontSize || p.fontSize;
+      const big = document.getElementById("captionLiveBig");
+      if (big) {
+        big.innerHTML = `<span class="cap-label">${esc(p.name)} — preview</span>${captionSampleInner(p, Math.max(9, Math.round(sz * 0.32)))}`;
+      }
+    }
+
+    // ── AUDIO TAB ─────────────────────────────────────────────────────────
+    function renderAudioTab(content) {
+      const m = current?.music || {};
+      const enabled = m.enabled !== false;
+      const vol = Math.round((m.volume ?? 0.25) * 100);
+      const selectedFile = m.file || musicTracks.find(t => t.available)?.file || musicTracks[0]?.file || "";
+      let tracks = musicTracks.slice();
+      if (selectedFile && !tracks.some(t => t.file === selectedFile)) {
+        tracks.unshift({ file: selectedFile, title: "Current track", artist: "", available: true });
+      }
+      const options = (tracks.length ? tracks : [{ file: selectedFile || "data/music/01-funk-abnormal.mp3", title: "Default", artist: "", available: true }])
+        .map(t => `<option value="${esc(t.file)}" ${t.file === selectedFile ? "selected" : ""} ${t.available === false ? "disabled" : ""}>${esc(t.title)}${t.artist ? " — " + esc(t.artist) : ""}${t.available === false ? " (run pnpm music-sync)" : ""}</option>`)
+        .join("");
+      content.innerHTML = `
+        <div class="library-summary"><strong>Narration: ${esc(studioConfig.voiceModel)}</strong><br>Language: ${esc(studioConfig.voiceLanguage)}<br>Script model: ${esc(studioConfig.scriptModel)}<p class="library-hint">Apply Edits reuses this project's saved narration.</p></div>
+        <div class="toggle-row">
+          <label for="musicOn">Background Music (Phonk)</label>
+          <input type="checkbox" id="musicOn" ${enabled ? "checked" : ""} />
+        </div>
+        <span class="field-label">Track</span>
+        <select id="musicTrack">${options}</select>
+        <button type="button" class="send-btn secondary" id="musicPreviewBtn" style="margin-top:8px;font-size:11px;padding:8px">▶ Preview Track</button>
+        <span class="field-label">Volume</span>
+        <div class="row">
+          <input type="range" id="musicVol" min="0" max="100" value="${vol}" ${!enabled ? "disabled" : ""} />
+          <span class="row-val" id="volLabel">${vol}%</span>
+        </div>
+        <p style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5">Missing tracks? Run <code style="color:var(--accent)">pnpm music-sync</code> once in the project folder.</p>
+      `;
+      document.getElementById("musicOn").oninput = e => {
+        const on = e.target.checked;
+        if (current) { if (!current.music) current.music = {}; current.music.enabled = on; }
+        document.getElementById("musicVol").disabled = !on;
+      };
+      document.getElementById("musicTrack").onchange = e => {
+        if (current) {
+          if (!current.music) current.music = {};
+          current.music.file = e.target.value;
+          const tr = musicTracks.find(x => x.file === e.target.value);
+          if (tr) current.music.title = tr.title;
+        }
+      };
+      document.getElementById("musicVol").oninput = e => {
+        const v = Number(e.target.value);
+        document.getElementById("volLabel").textContent = v + "%";
+        if (current) { if (!current.music) current.music = {}; current.music.volume = v / 100; }
+      };
+      document.getElementById("musicPreviewBtn").onclick = () => {
+        const file = document.getElementById("musicTrack").value;
+        if (!file) return;
+        const a = new Audio("/" + file.replace(/^\/?/, ""));
+        a.volume = Number(document.getElementById("musicVol").value) / 100;
+        a.play().catch(() => setMsg("Could not preview — run pnpm music-sync", "warn"));
+      };
+    }
+
+    // ── SCRIPT TAB ────────────────────────────────────────────────────────
+    function renderScriptTab(content) {
+      const script = current?.scriptDe || DEFAULT_SCRIPT;
+      content.innerHTML = `
+        <span class="field-label">German Script</span>
+        <textarea id="scriptArea" rows="10">${esc(script)}</textarea>
+        <p style="font-size:10px;color:var(--muted);margin-top:6px">This text will be spoken by the avatar and used for captions.</p>
+      `;
+      document.getElementById("scriptArea").oninput = e => {
+        if (current) current.scriptDe = e.target.value;
+      };
+    }
+
+    // ── ADVANCED TAB ──────────────────────────────────────────────────────
+    function renderAdvancedTab(content) {
+      const introMs = current?.introMs || 7000;
+      const ar = aspectRatio();
+      content.innerHTML = `
+        <span class="field-label">Video Format</span>
+        <select id="aspectRatio">
+          <option value="16:9" ${ar === "16:9" ? "selected" : ""}>Horizontal 16:9 (scene avatars)</option>
+          <option value="9:16" ${ar === "9:16" ? "selected" : ""}>Vertical 9:16 (Reels / TikTok)</option>
+        </select>
+        <p style="font-size:10px;color:var(--muted);margin-top:6px">Use 16:9 for lounge/office scene avatars. Use 9:16 for portrait talking-head Reels.</p>
+
+        <span class="field-label">Avatar Visible Duration</span>
+        <div class="row">
+          <input type="range" id="introMs" min="3000" max="12000" step="500" value="${introMs}" />
+          <span class="row-val" id="introLabel">${(introMs/1000).toFixed(1)}s</span>
+        </div>
+        <details style="margin-top:14px">
+          <summary>Render Info</summary>
+          <div style="margin-top:8px;font-size:11px;color:var(--muted);line-height:1.6">
+            Project: ${esc(current?.id || "—")}<br/>
+            Status: ${esc(current?.status || "—")}<br/>
+            Created: ${esc(current?.createdAt?.slice(0,10) || "—")}
+          </div>
+        </details>
+      `;
+      document.getElementById("introMs").oninput = e => {
+        const v = Number(e.target.value);
+        document.getElementById("introLabel").textContent = (v/1000).toFixed(1) + "s";
+        if (current) current.introMs = v;
+      };
+      document.getElementById("aspectRatio").onchange = e => {
+        if (current) current.aspectRatio = e.target.value;
+        renderPreview();
+      };
+    }
+
+    // ── COLLECT FORM ──────────────────────────────────────────────────────
+    function collectForm() {
+      if (!current) return null;
+      const script = document.getElementById("scriptArea")?.value ?? current.scriptDe ?? DEFAULT_SCRIPT;
+      const introMs = Number(document.getElementById("introMs")?.value || current.introMs || 7000);
+      const musicOn = document.getElementById("musicOn")?.checked ?? (current.music?.enabled !== false);
+      const musicVol = Number(document.getElementById("musicVol")?.value ?? Math.round((current.music?.volume ?? 0.25) * 100)) / 100;
+      const fontSize = Number(document.getElementById("fontSizeSlider")?.value || current.captions?.fontSize || 32);
+      const presetId = current.captions?.presetId || "meta-clean";
+      const bottomPct = current.captions?.bottomPercent;
+      const musicFile = document.getElementById("musicTrack")?.value
+        || current.music?.file
+        || musicTracks.find(t => t.available)?.file
+        || "data/music/01-funk-abnormal.mp3";
+      return {
+        ...current,
+        scriptDe: script,
+        introMs,
+        aspectRatio: document.getElementById("aspectRatio")?.value || current.aspectRatio || "16:9",
+        music: { ...current.music, enabled: musicOn, volume: musicVol, file: musicFile },
+        captions: { ...current.captions, presetId, fontSize, ...(bottomPct != null ? { bottomPercent: bottomPct } : {}) },
+        avatarZoom: 1,
+      };
+    }
+
+    // ── SEND VIDEO ────────────────────────────────────────────────────────
+    async function createLocalPreview() {
+      const meta = collectForm();
+      if (!meta) return;
+      if (!meta.scriptDe?.trim()) { setMsg("Enter a German script first.", "warn"); return; }
+      const button = document.getElementById("localPreviewBtn");
+      button.disabled = true;
+      setMsg("Starting local preview with German narration and B-roll…", "ok");
+      try {
+        const result = await api("/api/projects/" + encodeURIComponent(meta.id) + "/local-preview", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(meta),
+        });
+        current = result.project;
+        projects.unshift(current);
+        captionEditMode = false;
+        currentSpeed = 1;
+        renderAll();
+        updateHeaderStatus(true);
+        setMsg("Creating a separate preview: 3-second waveform intro, B-roll, captions and music. Matching saved voice is reused.", "ok");
+        startPollIfNeeded();
+      } catch (e) { setMsg(String(e.message), "err"); updateSendBtn(); }
+    }
+
+    async function recaptionVideo() {
+      const meta = collectForm();
+      if (!meta) return;
+      if (current.status !== "done") {
+        setMsg("Create a local preview or avatar video first.", "warn");
+        return;
+      }
+      setMsg("Applying captions, music and B-roll. Saved voice and source reused.", "ok");
+      try {
+        await api("/api/projects/" + encodeURIComponent(current.id) + "/recaption", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(meta),
+        });
+        current.status = "rendering";
+        captionEditMode = false;
+        const w = document.querySelector(".video-wrapper");
+        if (w) w.dataset.overlayBound = "";
+        renderPreview();
+        updateSendBtn();
+        startPollIfNeeded();
+      } catch (e) {
+        setMsg(String(e.message), "err");
+      }
+    }
+
+    async function sendVideo() {
+      const meta = collectForm();
+      if (!meta) return;
+      if (!meta.avatar?.heygenAvatarId) { setMsg("Please choose an avatar first.", "warn"); return; }
+      setMsg("Sending… HeyGen + B-roll + captions + music", "ok");
+      try {
+        await api("/api/projects/" + encodeURIComponent(current.id) + "/send", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(meta),
+        });
+        current.status = "generating";
+        renderPreview();
+        updateSendBtn();
+        setMsg("Processing started — usually 2–5 min.", "ok");
+        startPollIfNeeded();
+      } catch (e) { setMsg(String(e.message), "err"); }
+    }
+
+    // ── POLLING ───────────────────────────────────────────────────────────
+    function startPollIfNeeded() {
+      if (pollTimer) clearInterval(pollTimer);
+      if (!current || (current.status !== "generating" && current.status !== "rendering")) return;
+      pollTimer = setInterval(async () => {
+        try {
+          const { rendering } = await api("/api/render-status");
+          updateHeaderStatus(rendering);
+          const prev = current?.status;
+          if (current?.id) {
+            current = await api("/api/projects/" + encodeURIComponent(current.id));
+            projects = projects.map(p => p.id === current.id ? current : p);
+          }
+          renderProjects();
+          renderPreview();
+          updateSendBtn();
+          updateStopBtn();
+          if (!rendering && prev !== "done" && current.status === "done") {
+            setMsg("Video ready! Hit Download.", "ok");
+            clearInterval(pollTimer); pollTimer = null;
+          }
+          if (current.status === "error") {
+            setMsg(current.error || "Render failed", "err");
+            clearInterval(pollTimer); pollTimer = null;
+          }
+        } catch {}
+      }, 5000);
+    }
+
+    // ── AVATAR MODAL ──────────────────────────────────────────────────────
+    async function loadAvatarPage() {
+      const q = avatarQuery ? `&q=${encodeURIComponent(avatarQuery)}` : "";
+      const portrait = document.getElementById("portraitOnly")?.checked ? "&portrait=1" : "";
+      const data = await api(`/api/avatars?page=${avatarPage}${q}${portrait}`);
+      avatarPages = data.pages;
+      document.getElementById("avatarCount").textContent = `${data.total} avatars`;
+      renderAvatarGrid(data.avatars);
+      document.getElementById("avatarPager").innerHTML = `
+        <button data-action="avatar-prev" ${avatarPage <= 1 ? "disabled" : ""}>←</button>
+        <span style="font-size:11px;color:var(--muted)">${avatarPage} / ${avatarPages}</span>
+        <button data-action="avatar-next" ${avatarPage >= avatarPages ? "disabled" : ""}>→</button>
+      `;
+    }
+
+    function renderAvatarGrid(list) {
+      const grid = document.getElementById("avatarGrid");
+      const sel = pickerSelection?.avatar_id || current?.avatar?.heygenAvatarId;
+      grid.innerHTML = list.map(a => `
+        <div class="avatar-card ${a.avatar_id === sel ? "selected" : ""}"
+          data-id="${esc(a.avatar_id)}" data-name="${esc(a.avatar_name)}"
+          data-preview="${esc(a.preview_image_url || "")}" data-gender="${esc(a.gender || "")}">
+          <img src="${esc(a.preview_image_url || "")}" alt="" loading="lazy" onerror="this.style.background='#333'" />
+          <div class="av-label">${esc(a.avatar_name)}</div>
+        </div>
+      `).join("") || `<p style="color:var(--muted);font-size:12px">No avatars found</p>`;
+      grid.querySelectorAll(".avatar-card").forEach(card => {
+        card.onclick = () => {
+          grid.querySelectorAll(".avatar-card").forEach(c => c.classList.remove("selected"));
+          card.classList.add("selected");
+          pickerSelection = { avatar_id: card.dataset.id, avatar_name: card.dataset.name, preview_image_url: card.dataset.preview, gender: card.dataset.gender || undefined };
+        };
+      });
+    }
+
+    async function openAvatarModal() {
+      avatarPage = 1; avatarQuery = "";
+      pickerSelection = { avatar_id: current?.avatar?.heygenAvatarId, avatar_name: current?.avatar?.name, preview_image_url: current?.avatar?.previewImageUrl, gender: current?.avatar?.gender };
+      document.getElementById("avatarModal").classList.add("open");
+      document.getElementById("avatarSearch").value = "";
+      document.getElementById("avatarSearch").oninput = (e) => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(async () => { avatarQuery = e.target.value.trim(); avatarPage = 1; await loadAvatarPage(); }, 250);
+      };
+      await loadAvatarPage();
+    }
+
+    function closeAvatarModal() { document.getElementById("avatarModal").classList.remove("open"); }
+
+    async function confirmAvatar() {
+      if (!pickerSelection?.avatar_id) return closeAvatarModal();
+      const gender = pickerSelection.gender?.toLowerCase();
+      current.avatar = { heygenAvatarId: pickerSelection.avatar_id, name: pickerSelection.avatar_name, previewImageUrl: pickerSelection.preview_image_url, gender: gender === "female" ? "female" : gender === "male" ? "male" : undefined };
+      closeAvatarModal();
+      renderAvatar();
+      renderPreview();
+      updateSendBtn();
+      setMsg(`Avatar "${pickerSelection.avatar_name}" selected.`, "ok");
+    }
+
+    // ── NEW VIDEO ─────────────────────────────────────────────────────────
+    async function newVideo() {
+      const id = "video_" + Date.now();
+      const meta = await api("/api/projects", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ id, title: "New Video " + new Date().toLocaleTimeString(), scriptDe: DEFAULT_SCRIPT }),
+      });
+      projects.unshift(meta);
+      current = meta;
+      captionEditMode = false;
+      currentSpeed = 1.0;
+      renderAll();
+    }
+
+    // ── INIT ──────────────────────────────────────────────────────────────
+    async function init() {
+      try {
+        [projects, presets, musicTracks, brollCatalog, studioConfig] = await Promise.all([
+          api("/api/projects"),
+          api("/api/caption-presets"),
+          api("/api/music-tracks"),
+          api("/api/broll/catalog"),
+          api("/api/studio-config"),
+        ]);
+        document.getElementById("brollTab").textContent = "B-roll (" + brollCatalog.length + ")";
+        document.getElementById("serviceSummary").textContent = studioConfig.scriptModel + " · " + studioConfig.voiceModel + " · " + studioConfig.voiceLanguage;
+        if (!projects.length) {
+          await newVideo();
+        } else {
+          await selectProject(projects[0].id);
+        }
+      } catch (e) {
+        document.getElementById("preview").innerHTML = `<div class="no-video"><div style="color:#f77">Load error</div><p>Restart: pnpm dashboard</p></div>`;
+        return;
+      }
+
+      // Global click delegation
+      document.addEventListener("click", e => {
+        const t = e.target.closest("[data-action]");
+        if (!t) return;
+        const a = t.dataset.action;
+        if (a === "new-video") newVideo();
+        if (a === "refresh-library") refreshLibrary();
+        if (a === "broll-close") closeBrollPreview();
+        if (a === "browse-avatars") openAvatarModal();
+        if (a === "send") sendVideo();
+        if (a === "local-preview") createLocalPreview();
+        if (a === "recaption") recaptionVideo();
+        if (a === "stop") cancelRender();
+        if (a === "avatar-cancel") closeAvatarModal();
+        if (a === "avatar-confirm") confirmAvatar();
+        if (a === "avatar-prev") { if (avatarPage > 1) { avatarPage--; loadAvatarPage(); } }
+        if (a === "avatar-next") { if (avatarPage < avatarPages) { avatarPage++; loadAvatarPage(); } }
+      });
+
+      // Close modal on backdrop click
+      document.getElementById("avatarModal").addEventListener("click", e => {
+        if (e.target.id === "avatarModal") closeAvatarModal();
+      });
+      document.getElementById("brollModal").addEventListener("click", e => { if (e.target.id === "brollModal") closeBrollPreview(); });
+      document.addEventListener("keydown", e => { if (e.key === "Escape") closeBrollPreview(); });
+
+      // Portrait filter
+      document.getElementById("portraitOnly").addEventListener("change", () => { avatarPage = 1; loadAvatarPage(); });
+
+      // Tab switching
+      document.querySelectorAll(".tab-btn").forEach(btn => {
+        btn.onclick = () => renderTab(btn.dataset.tab);
+      });
+
+      // Speed controls
+      document.getElementById("speedDown").onclick = () => changeSpeed(-0.05);
+      document.getElementById("speedUp").onclick = () => changeSpeed(+0.05);
+      document.getElementById("speedRange").oninput = e => setSpeed(parseFloat(e.target.value));
+      document.querySelectorAll(".speed-pre").forEach(b => {
+        b.onclick = () => setSpeed(parseFloat(b.dataset.spd));
+      });
+
+      // Download button
+      document.getElementById("downloadBtn").onclick = downloadVideo;
+      document.getElementById("stopBtn").onclick = cancelRender;
+    }
+
+    init();
+  </script>
+  <script src="/agent.js" defer></script>
+</body>
+</html>

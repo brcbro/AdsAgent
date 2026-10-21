@@ -1,0 +1,108 @@
+{
+  "checkedAt": "2026-10-16T10:23:59.796Z",
+  "localAssets": {
+    "brollClips": 169,
+    "pathKey": "file",
+    "missingClips": 0,
+    "musicConfigured": "data/music/01-funk-abnormal.mp3",
+    "musicExists": true,
+    "ffmpeg": "ffmpeg version 8.1-full_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers\r",
+    "ffprobe": "ffprobe version 8.1-full_build-www.gyan.dev Copyright (c) 2007-2026 the FFmpeg developers\r"
+  },
+  "elevenVoice": {
+    "name": "Theo Thaler - German Ads",
+    "category": "professional",
+    "language": "de",
+    "labels": {
+      "accent": "standard",
+      "age": "middle_aged",
+      "gender": "male",
+      "descriptive": "excited",
+      "language": "de",
+      "use_case": "advertisement"
+    }
+  },
+  "elevenModel": {
+    "configuredModel": "eleven_v4",
+    "available": true,
+    "textToSpeech": true,
+    "germanSupported": true,
+    "availableModels": [
+      "eleven_v4",
+      "eleven_v4_turbo",
+      "eleven_v3",
+      "eleven_v3_conversational",
+      "eleven_multilingual_v2",
+      "eleven_flash_v2_5",
+      "eleven_turbo_v2_5",
+      "eleven_turbo_v2",
+      "eleven_flash_v2",
+      "eleven_english_sts_v2",
+      "eleven_multilingual_sts_v2"
+    ]
+  },
+  "heygenAccount": {
+    "billingType": "wallet",
+    "wallet": {
+      "currency": "usd",
+      "remainingBalance": 15
+    }
+  },
+  "scriptGeneration": {
+    "provider": "anthropic",
+    "requestedModel": "claude-haiku-5-5",
+    "responseModel": "claude-haiku-5-5",
+    "reply": "Verbindung erfolgreich.",
+    "usage": {
+      "input_tokens": 27,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 14,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "heygenQuota": {
+    "remaining_quota": 900,
+    "details": {
+      "api": 900,
+      "studio_free_watermarked_preview": 3,
+      "plan_credit": 1200
+    }
+  },
+  "elevenSubscription": {
+    "tier": "grant_tier_2_2025_07_23",
+    "status": "active",
+    "characterCount": 4840288,
+    "characterLimit": 33010000,
+    "remainingCharacters": 28169712
+  },
+  "heygenAvatars": {
+    "responseKeys": [
+      "error",
+      "data",
+      "warning"
+    ],
+    "dataKeys": [
+      "avatars",
+      "talking_photos"
+    ],
+    "upstreamError": null,
+    "available": 1260,
+    "defaultAvatarConfigured": true,
+    "defaultAvatarFound": false,
+    "cached": 1281,
+    "cachedStillAvailable": 1254
+  },
+  "heygenDefaultAvatar": {
+    "error": "HTTP 404: avatar look not found, look_id: 8af078aa4e034870a0056a23cfa396d8, space_id: 00242f7763d64e83bca89d1d5051fd9d"
+  }
+}

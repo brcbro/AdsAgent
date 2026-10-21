@@ -1,0 +1,45 @@
+{
+  "name": "@ai-ads/dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "vite build && tsx src/server.ts",
+    "serve": "tsx src/server.ts",
+    "build": "vite build",
+    "dev:web": "vite",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p web/tsconfig.json",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@ai-ads/core": "workspace:*",
+    "@ai-ads/performance": "workspace:*",
+    "@ai-ads/pipeline": "workspace:*",
+    "@fontsource-variable/inter": "5.2.6",
+    "@tanstack/react-query": "5.83.0",
+    "clsx": "2.1.1",
+    "cmdk": "1.1.1",
+    "express": "^4.21.2",
+    "lucide-react": "0.525.0",
+    "radix-ui": "1.4.2",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-markdown": "10.1.0",
+    "react-router": "7.6.3",
+    "sonner": "2.0.6",
+    "tailwind-merge": "3.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.53.2",
+    "@tailwindcss/vite": "4.1.11",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.0",
+    "@types/react": "19.1.8",
+    "@types/react-dom": "19.1.6",
+    "@vitejs/plugin-react": "4.5.2",
+    "tailwindcss": "4.1.11",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "6.3.5"
+  }
+}

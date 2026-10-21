@@ -1,0 +1,228 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+/*
+ * Design tokens. Components only use the semantic names below (bg-surface, text-fg-muted,
+ * border-line …), so a dark theme is a second block of variables under [data-theme="dark"].
+ */
+:root {
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --subtle: #f4f4f5;
+  --muted-surface: #e4e4e7;
+  --line: #e4e4e7;
+  --line-strong: #d4d4d8;
+  --fg: #09090b;
+  --fg-secondary: #3f3f46;
+  --fg-muted: #71717a;
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-subtle: #eef2ff;
+  --accent-fg: #ffffff;
+  --danger-fg: #ffffff;
+  /* Tooltips and modal veils stay dark in both themes. */
+  --inverse: #18181b;
+  --inverse-fg: #fafafa;
+  --overlay: #09090b;
+  --success: #15803d;
+  --success-subtle: #f0fdf4;
+  --warning: #b45309;
+  --warning-subtle: #fffbeb;
+  --danger: #dc2626;
+  --danger-hover: #b91c1c;
+  --danger-subtle: #fef2f2;
+  --info: #2563eb;
+  --info-subtle: #eff6ff;
+  /* Video stays on a dark stage in every theme so captions are judged against real footage. */
+  --stage: #0b0b0f;
+  --stage-raised: #18181d;
+  color-scheme: light;
+}
+
+/* Dark theme: the same semantic names, re-tuned so text and controls keep WCAG AA contrast. */
+:root[data-theme="dark"] {
+  --bg: #09090b;
+  --surface: #111114;
+  --subtle: #1b1b20;
+  --muted-surface: #2a2a30;
+  --line: #26262c;
+  --line-strong: #3f3f46;
+  --fg: #fafafa;
+  --fg-secondary: #d4d4d8;
+  --fg-muted: #a1a1aa;
+  --accent: #8b8ff9;
+  --accent-hover: #a5a8fb;
+  --accent-subtle: rgb(129 140 248 / 0.14);
+  --accent-fg: #0b0b1a;
+  --success: #4ade80;
+  --success-subtle: rgb(74 222 128 / 0.12);
+  --warning: #fbbf24;
+  --warning-subtle: rgb(251 191 36 / 0.12);
+  --danger: #f87171;
+  --danger-hover: #fca5a5;
+  --danger-subtle: rgb(248 113 113 / 0.12);
+  --danger-fg: #1f0707;
+  --info: #60a5fa;
+  --info-subtle: rgb(96 165 250 / 0.12);
+  --inverse: #fafafa;
+  --inverse-fg: #18181b;
+  --stage: #050507;
+  --stage-raised: #141418;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-subtle: var(--subtle);
+  --color-muted-surface: var(--muted-surface);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-fg-secondary: var(--fg-secondary);
+  --color-fg-muted: var(--fg-muted);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-subtle: var(--accent-subtle);
+  --color-accent-fg: var(--accent-fg);
+  --color-danger-fg: var(--danger-fg);
+  --color-inverse: var(--inverse);
+  --color-inverse-fg: var(--inverse-fg);
+  --color-overlay: var(--overlay);
+  --color-success: var(--success);
+  --color-success-subtle: var(--success-subtle);
+  --color-warning: var(--warning);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-info: var(--info);
+  --color-info-subtle: var(--info-subtle);
+  --color-stage: var(--stage);
+  --color-stage-raised: var(--stage-raised);
+
+  /* Type scale: 12 / 13 / 14 / 16 / 20 / 24 — nothing smaller than 12px. */
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.375rem;
+  --text-lg: 1rem;
+  --text-lg--line-height: 1.5rem;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 2rem;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --shadow-xs: 0 1px 2px rgb(9 9 11 / 0.05);
+  --shadow-sm: 0 1px 3px rgb(9 9 11 / 0.06), 0 1px 2px rgb(9 9 11 / 0.04);
+  --shadow-md: 0 4px 12px rgb(9 9 11 / 0.06), 0 2px 4px rgb(9 9 11 / 0.04);
+  --shadow-lg: 0 16px 40px rgb(9 9 11 / 0.12), 0 4px 12px rgb(9 9 11 / 0.06);
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --animate-fade-in: fade-in 150ms var(--ease-out);
+  --animate-scale-in: scale-in 160ms var(--ease-out);
+  --animate-slide-in: slide-in 200ms var(--ease-out);
+  --animate-pulse-soft: pulse-soft 1.6s ease-in-out infinite;
+  --animate-indeterminate: indeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes scale-in { from { opacity: 0; transform: translate(-50%, -48%) scale(0.97); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes slide-in { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
+@keyframes pulse-soft { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+@keyframes indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+
+@layer base {
+  html, body, #root { height: 100%; }
+  body {
+    @apply bg-bg text-fg font-sans text-base antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+  button, [role="button"] { cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  ::selection { background: var(--accent-subtle); color: var(--fg); }
+
+  /* Thin, light scrollbars that stay grabbable. */
+  * { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-thumb:hover { background: #a1a1aa; background-clip: content-box; border: 2px solid transparent; }
+}
+
+@layer utilities {
+  .tabular { font-variant-numeric: tabular-nums; }
+  .press { transition: transform 120ms var(--ease-out); }
+  .press:active:not(:disabled) { transform: scale(0.98); }
+}
+
+/* Range inputs share one accessible style (track + 16px thumb, accent fill via --fill). */
+input[type="range"].range {
+  appearance: none;
+  height: 20px;
+  background: transparent;
+  cursor: pointer;
+}
+input[type="range"].range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 4px;
+  background: linear-gradient(to right, var(--accent) var(--fill, 0%), var(--muted-surface) var(--fill, 0%));
+}
+input[type="range"].range::-moz-range-track { height: 4px; border-radius: 4px; background: var(--muted-surface); }
+input[type="range"].range::-moz-range-progress { height: 4px; border-radius: 4px; background: var(--accent); }
+input[type="range"].range::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-sm);
+  transition: transform 120ms var(--ease-out);
+}
+input[type="range"].range::-moz-range-thumb {
+  width: 16px; height: 16px; border-radius: 50%; background: #fff;
+  border: 1px solid var(--line-strong); box-shadow: var(--shadow-sm);
+}
+input[type="range"].range:hover::-webkit-slider-thumb { transform: scale(1.1); }
+input[type="range"].range:disabled { opacity: 0.5; cursor: not-allowed; }
+input[type="range"].range.on-dark::-webkit-slider-runnable-track {
+  background: linear-gradient(to right, #fff var(--fill, 0%), rgb(255 255 255 / 0.25) var(--fill, 0%));
+}
+
+select.select-chevron {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2371717a' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-size: 16px;
+  background-position: right 10px center;
+  background-repeat: no-repeat;
+}
+
+/* Markdown inside agent chat bubbles. */
+.prose-chat p { margin: 0 0 0.5rem; }
+.prose-chat p:last-child { margin-bottom: 0; }
+.prose-chat ul, .prose-chat ol { margin: 0.25rem 0 0.5rem 1.25rem; }
+.prose-chat ul { list-style: disc; }
+.prose-chat ol { list-style: decimal; }
+.prose-chat code { font-family: var(--font-mono); font-size: 0.8125rem; background: var(--subtle); padding: 1px 4px; border-radius: 4px; }
+.prose-chat pre { background: var(--subtle); padding: 0.75rem; border-radius: 8px; overflow-x: auto; margin: 0.5rem 0; }
+.prose-chat strong { font-weight: 600; }
+.prose-chat a { color: var(--accent); text-decoration: underline; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
