@@ -40,6 +40,8 @@ export interface AdMetricsDaily {
   clicks?: number;
   linkClicks?: number;
   videoPlays3s?: number;
+  /** Any video start (Meta `video_play_actions`); kept in the raw payload only, not stored or scored. */
+  videoPlaysAny?: number;
   videoThruplays?: number;
   videoP25?: number;
   videoP50?: number;

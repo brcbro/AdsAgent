@@ -17,11 +17,15 @@ test("Insight rows map video actions, link clicks and the preferred conversion a
     ad_id: "9", ad_name: "x", date_start: "2026-10-01", impressions: "12345", reach: "9000", spend: "150.25", clicks: "300", inline_link_clicks: "240",
     video_play_actions: [{ action_type: "video_view", value: "3100" }], video_thruplay_watched_actions: [{ action_type: "video_view", value: "900" }],
     video_p25_watched_actions: [{ action_type: "video_view", value: "3500" }], video_p100_watched_actions: [{ action_type: "video_view", value: "700" }],
-    actions: [{ action_type: "link_click", value: "240" }, { action_type: "omni_purchase", value: "6" }, { action_type: "purchase", value: "4" }, { action_type: "lead", value: "2" }],
+    actions: [{ action_type: "link_click", value: "240" }, { action_type: "video_view", value: "3100" }, { action_type: "omni_purchase", value: "6" }, { action_type: "purchase", value: "4" }, { action_type: "lead", value: "2" }],
     action_values: [{ action_type: "purchase", value: "380.5" }],
   }, cfg);
   assert.equal(m.adId, "meta:9"); assert.equal(m.date, "2026-10-01"); assert.equal(m.impressions, 12_345); assert.equal(m.spend, 150.25);
-  assert.equal(m.linkClicks, 240); assert.equal(m.videoPlays3s, 3100); assert.equal(m.videoThruplays, 900); assert.equal(m.videoP25, 3500); assert.equal(m.videoP100, 700);
+  assert.equal(m.linkClicks, 240); assert.equal(m.videoThruplays, 900); assert.equal(m.videoP25, 3500); assert.equal(m.videoP100, 700);
+  // Hook rate must use 3-second plays (the video_view action), not every autoplay start.
+  const starts = mapInsightRow({ ad_id: "9", date_start: "2026-10-01", impressions: "10000", video_play_actions: [{ action_type: "video_view", value: "9400" }], actions: [{ action_type: "video_view", value: "2600" }] }, cfg);
+  assert.equal(starts.videoPlays3s, 2600); assert.equal(starts.videoPlaysAny, 9400);
+  assert.equal(mapInsightRow({ ad_id: "9", date_start: "2026-10-01", video_play_actions: [{ action_type: "video_view", value: "50" }] }, cfg).videoPlays3s, 50, "falls back to starts when the action is absent");
   assert.equal(m.conversions, 4); assert.equal(m.conversionValue, 380.5); assert.equal(m.leads, 2);
   const empty = mapInsightRow({ ad_id: "1", date_start: "2026-10-02" }, cfg);
   assert.equal(empty.impressions, undefined); assert.equal(empty.videoPlays3s, undefined); assert.equal(empty.conversions, undefined);

@@ -77,7 +77,10 @@ export function mapInsightRow(row: MetaInsightRow, cfg: Pick<MetaConfig, "conver
     adId: `meta:${row.ad_id}`, date: row.date_start,
     impressions: num(row.impressions), reach: num(row.reach), spend: num(row.spend),
     clicks: num(row.clicks), linkClicks: num(row.inline_link_clicks),
-    videoPlays3s: actionTotal(row.video_play_actions), videoThruplays: actionTotal(row.video_thruplay_watched_actions),
+    // "3-second video plays" is the `video_view` action; `video_play_actions` counts every start (≈ impressions on autoplay feeds).
+    videoPlays3s: pickAction(row.actions, ["video_view"]) ?? actionTotal(row.video_play_actions),
+    videoPlaysAny: actionTotal(row.video_play_actions),
+    videoThruplays: actionTotal(row.video_thruplay_watched_actions),
     videoP25: actionTotal(row.video_p25_watched_actions), videoP50: actionTotal(row.video_p50_watched_actions),
     videoP75: actionTotal(row.video_p75_watched_actions), videoP100: actionTotal(row.video_p100_watched_actions),
     conversions: pickAction(row.actions, cfg.conversionActions), conversionValue: pickAction(row.action_values, cfg.conversionActions),
