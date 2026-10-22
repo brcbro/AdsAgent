@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { AgentStore } from "./agent-store.js";
+import { AgentStore, titleFromText } from "./agent-store.js";
 
 test("Production mode and selected presenter persist; legacy jobs stay local and invalid avatar jobs fail", () => {
   const store = new AgentStore(":memory:");
@@ -78,4 +78,78 @@ test("Chats can be renamed and archived; active work blocks archiving and job hi
   } finally {
     store.close();
   }
+});
+
+test("A new brief supersedes the script awaiting review; archived chats reject briefs", () => {
+  const store = new AgentStore(":memory:");
+  try {
+    const session = store.newSession();
+    const first = store.enqueue(session.id, "Erstes Skript", 20, false);
+    const job = store.claim("worker")!; job.status = "script_review"; job.scriptDe = "Ein erstes deutsches Skript zum Thema Trading.";
+    assert.equal(store.checkpoint(job, "worker"), true);
+    const second = store.enqueue(session.id, "Bitte kürzer", 20, false);
+    assert.equal(store.job(first.id)?.status, "canceled");
+    assert.match(store.job(first.id)!.events.at(-1)!.text, /Superseded/);
+    assert.equal(store.job(second.id)?.status, "queued");
+    store.cancel(second.id);
+    store.archiveSession(session.id);
+    assert.throws(() => store.enqueue(session.id, "Noch eins", 20, true), /archived/);
+    store.unarchiveSession(session.id);
+    assert.equal(store.enqueue(session.id, "Noch eins", 20, true).status, "queued");
+  } finally { store.close(); }
+});
+
+test("Titles cut at word boundaries, the agent's title wins until a person renames, and empty chats are reused", () => {
+  assert.equal(titleFromText("Create a ten-second German educational test video with the selected HeyGen presenter"), "Create a ten-second German educational test video with the selected…");
+  assert.equal(titleFromText("Short brief"), "Short brief");
+  const store = new AgentStore(":memory:");
+  try {
+    const a = store.newSession();
+    assert.equal(store.newSession().id, a.id, "an empty chat is handed back instead of a new one");
+    assert.equal(a.title, "New chat");
+    store.enqueue(a.id, "Create a ten-second German educational test video with the selected HeyGen presenter", 10, true);
+    assert.equal(store.session(a.id)?.title, "Create a ten-second German educational test video with the selected…");
+    store.autoTitle(a.id, "Beginner trading discipline");
+    assert.equal(store.session(a.id)?.title, "Beginner trading discipline");
+    store.renameSession(a.id, "Mine");
+    store.autoTitle(a.id, "Ignored");
+    assert.equal(store.session(a.id)?.title, "Mine");
+    const b = store.newSession();
+    assert.notEqual(b.id, a.id);
+  } finally { store.close(); }
+});
+
+test("Stopped jobs reopen for script editing; finished videos can be sent back with a note; pagination keeps active jobs", () => {
+  const store = new AgentStore(":memory:");
+  try {
+    const session = store.newSession();
+    const created = store.enqueue(session.id, "Video", 20, true);
+    const job = store.claim("worker")!; job.scriptDe = "Garantiert reich werden mit diesem einen Trick, ganz ohne Risiko."; job.status = "needs_review"; job.error = "blocked";
+    store.checkpoint(job, "worker");
+    const reopened = store.reopenScript(created.id);
+    assert.equal(reopened.status, "script_review"); assert.equal(reopened.error, "blocked", "the reason stays visible in the review panel");
+    assert.throws(() => store.reopenScript(created.id), /cannot be retried/);
+    store.approve(created.id, "Lerne Trading mit klaren Regeln und einem Plan für jeden Tag.");
+    const run = store.claim("worker")!;
+    run.status = "done"; run.stage = "complete"; run.quality = { passed: true, checkedAt: new Date().toISOString(), durationSeconds: 20, checks: [] };
+    store.checkpoint(run, "worker");
+    assert.throws(() => store.requestChanges(created.id, "   "), /1–2000/);
+    const back = store.requestChanges(created.id, "Hook schneller");
+    assert.equal(back.rejectionNote, "Hook schneller"); assert.ok(back.rejectedAt);
+    assert.equal(store.approveJob(created.id, "reviewer"), true);
+    const approved = store.job(created.id)!;
+    assert.equal(approved.approvedBy, "reviewer"); assert.equal(approved.rejectedAt, undefined);
+    assert.throws(() => store.requestChanges(created.id, "again"), /already approved/);
+
+    for (let i = 0; i < 3; i++) { const s = store.newSession(); store.enqueue(s.id, `Old ${i}`, 20, true); store.cancel(store.jobs({ limit: 1 })[0].id); }
+    const active = store.newSession(); const queued = store.enqueue(active.id, "Active", 20, true);
+    const page = store.jobs({ limit: 2, offset: 0 });
+    assert.ok(page.some((j) => j.id === queued.id));
+    assert.equal(store.jobs({ limit: 2, offset: 2 }).length, 2);
+    assert.equal(store.jobCount(), 5);
+    assert.equal(store.jobCount(active.id), 1);
+    assert.equal(store.sessionSummaries().find((s) => s.id === active.id)?.messageCount, 1);
+    assert.deepEqual(store.searchSessions("hook schneller"), []);
+    assert.deepEqual(store.searchSessions("Active"), [active.id]);
+  } finally { store.close(); }
 });

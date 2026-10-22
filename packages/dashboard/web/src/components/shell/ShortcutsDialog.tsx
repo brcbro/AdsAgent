@@ -38,6 +38,8 @@ export const SHORTCUTS: Array<{ group: string; items: Array<{ keys: string[]; la
   {
     group: "Agent",
     items: [
+      { keys: ["Alt", "C"], label: "New chat" },
+      { keys: ["/"], label: "Focus the brief" },
       { keys: ["Enter"], label: "Send brief" },
       { keys: ["Shift", "Enter"], label: "New line" },
     ],

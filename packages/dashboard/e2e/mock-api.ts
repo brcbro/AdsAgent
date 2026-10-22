@@ -113,7 +113,32 @@ export async function mockApi(page: Page) {
         outputFolder: "video/test", services: { scripts: true, voice: true, avatar: true } });
     }
     if (method === "GET" && path === "/api/avatars") return json({ avatars: [{ avatar_id: "av_1", avatar_name: "Anna Office", gender: "female" }], total: 1, page: 1, limit: 48, pages: 1 });
-    if (method === "GET" && path === "/api/agent/state") return json(data.agent);
+    if (method === "GET" && path === "/api/agent/state") {
+      const sessions = data.agent.sessions.map((s) => {
+        const last = s.messages[s.messages.length - 1];
+        return { id: s.id, title: s.title, createdAt: s.createdAt, updatedAt: last?.at ?? s.createdAt, messageCount: s.messages.length, lastMessage: last };
+      });
+      return json({ sessions, jobs: data.agent.jobs, totalJobs: data.agent.jobs.length, workerRunning: data.agent.workerRunning });
+    }
+    if (method === "GET" && path === "/api/agent/sessions") return json(url.searchParams.get("archived") ? [] : { ids: [] });
+    if (method === "GET" && (m = path.match(/^\/api\/agent\/sessions\/([^/]+)$/))) {
+      const s = data.agent.sessions.find((x) => x.id === m![1]);
+      return s ? json(s) : json({ error: "Chat not found" }, 404);
+    }
+    if (method === "GET" && path === "/api/agent/jobs") return json({ jobs: [], total: data.agent.jobs.length, offset: 0, limit: 50 });
+    if (method === "GET" && path === "/api/agent/worker") return json({ running: true, restarts: 0, startedAt: iso(10), lastExitCode: null, log: ["Video agent worker started"] });
+    if (method === "POST" && path === "/api/agent/script-check") {
+      const text = String((body as { scriptDe?: string }).scriptDe ?? "");
+      const findings = [];
+      const g = text.match(/garantier\w*/i); if (g) findings.push({ severity: "block", rule: "guarantee", match: g[0], message: "Guarantees are not allowed for financial products." });
+      const c = text.match(/\bsicher\b/i); if (c) findings.push({ severity: "warn", rule: "certainty", match: c[0], message: "Implies certainty or safety; check the wording." });
+      return json({ findings, chars: text.trim().length, minChars: 30, maxChars: 1500, seconds: Math.round(text.trim().length / 14 * 10) / 10, charsPerSecond: 14 });
+    }
+    if (method === "POST" && (m = path.match(/^\/api\/agent\/jobs\/([^/]+)\/reject$/))) {
+      const job = data.agent.jobs.find((j) => j.id === m![1]) as Record<string, unknown> | undefined;
+      if (job) { job.rejectedAt = new Date().toISOString(); job.rejectionNote = (body as { note: string }).note; }
+      return json(job ?? { error: "Not found" }, job ? 200 : 404);
+    }
     if (method === "GET" && path === "/api/performance/overview") {
       const ad = (id: string, name: string, projectId?: string) => ({ id, accountId: "meta:1", platform: "meta", externalId: id.split(":")[1], name, campaignName: "Trading DE", projectId, variantKey: projectId ? "h1_c1_9x16" : undefined, firstSeen: "2026-10-01", lastSeen: "2026-10-30" });
       const score = (adId: string, over: Record<string, unknown>) => ({ adId, windowDays: 30, impressions: 40_000, spend: 600, hookRate: 0.25, holdRate: 0.3, ctr: 0.015, cpc: 1, cpa: 30, roas: 2.5, completionRate: 0.1, score: 0, percentile: 0.5, isWinner: false, isLoser: false, isFatigued: false, confidence: "high", computedAt: "2026-10-30T00:00:00Z", ...over });

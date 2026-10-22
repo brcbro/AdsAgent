@@ -1,5 +1,5 @@
 import type {
-  AgentJob, AgentSession, AgentState, AvatarPage, BrollClip, CaptionPreset, MusicTrack,
+  AgentJob, AgentSession, AgentSessionSummary, AgentState, ScriptCheck, WorkerInfo, AvatarPage, BrollClip, CaptionPreset, MusicTrack,
   Project, ProjectDraft, RenderStatus, RenderVersion, StudioConfig,
   AdSeriesPoint, KbBriefing, PatternsResponse, PerformanceOverview, PlatformAd, ProjectPerformance, Suggestion, SuggestionKind, SyncReport, Teardown, TeardownReport,
 } from "./types";
@@ -95,12 +95,25 @@ export const api = {
   adSeries: (adId: string) => request<{ ad: PlatformAd; series: AdSeriesPoint[] }>(`/api/performance/ads/${enc(adId)}/series`),
   linkAd: (adId: string, projectId: string | null) => request<{ ok: true; ad: PlatformAd }>(`/api/performance/ads/${enc(adId)}/link`, { json: { projectId } }),
   refreshAvatars: () => request<{ total: number; defaultRepaired: boolean; defaultAvatarId: string }>("/api/avatars/refresh", { json: {} }),
+  agentSession: (id: string) => request<AgentSession>(`/api/agent/sessions/${enc(id)}`),
+  archivedSessions: () => request<AgentSessionSummary[]>("/api/agent/sessions?archived=1"),
+  searchSessions: (q: string) => request<{ ids: string[] }>(`/api/agent/sessions?q=${enc(q)}`),
+  unarchiveSession: (id: string) => request<AgentSession>(`/api/agent/sessions/${enc(id)}/unarchive`, { json: {} }),
+  agentJobs: (params: { sessionId?: string; offset?: number; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params.sessionId) search.set("sessionId", params.sessionId);
+    if (params.offset) search.set("offset", String(params.offset));
+    if (params.limit) search.set("limit", String(params.limit));
+    return request<{ jobs: AgentJob[]; total: number; offset: number; limit: number }>(`/api/agent/jobs?${search}`);
+  },
+  scriptCheck: (scriptDe: string) => request<ScriptCheck>("/api/agent/script-check", { json: { scriptDe } }),
+  workerInfo: (lines = 80) => request<WorkerInfo>(`/api/agent/worker?lines=${lines}`),
   newSession: () => request<AgentSession>("/api/agent/sessions", { json: {} }),
   renameSession: (id: string, title: string) => request<AgentSession>(`/api/agent/sessions/${enc(id)}/rename`, { json: { title } }),
   archiveSession: (id: string) => request<AgentSession>(`/api/agent/sessions/${enc(id)}/archive`, { json: {} }),
   sendBrief: (sessionId: string, body: { message: string; targetSeconds: number; autoProduce: boolean; productionMode?: "local" | "heygen"; avatarId?: string }) =>
     request<AgentJob>(`/api/agent/sessions/${enc(sessionId)}/messages`, { json: body }),
-  jobAction: (jobId: string, action: "approve" | "retry" | "cancel", body: Record<string, unknown> = {}) =>
+  jobAction: (jobId: string, action: "approve" | "retry" | "cancel" | "reject" | "reopen", body: Record<string, unknown> = {}) =>
     request<AgentJob>(`/api/agent/jobs/${enc(jobId)}/${action}`, { json: body }),
 };
 

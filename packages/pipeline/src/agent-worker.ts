@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { adDir, DEFAULT_MUSIC, finalVideoFile, ProjectMetadata, REPO_ROOT } from "@ai-ads/core";
-import { AgentStore, type AgentJob } from "./agent-store.js";
+import { AgentStore, MAX_ATTEMPTS, type AgentJob } from "./agent-store.js";
 import { PerformanceStore, loadKbForPrompt } from "@ai-ads/performance";
 import { planAgentResponse } from "./agent-script.js";
 import { loadMetadata, saveMetadata } from "./produce.js";
@@ -34,13 +34,14 @@ function checkpoint(job: AgentJob, event: string) {
   if (!store.checkpoint(job, owner, event)) throw new Error("Job canceled or worker lease lost");
 }
 async function execute(job: AgentJob) {
-  if (job.attempts > 3) { job.status = "needs_review"; job.error = "Repeated interruptions reached the attempt limit. Start a new brief."; checkpoint(job, job.error); return; }
+  if (job.attempts > MAX_ATTEMPTS) { job.status = "needs_review"; job.error = "Repeated interruptions reached the attempt limit. Start a new brief."; checkpoint(job, job.error); return; }
   if (!job.scriptDe) {
     job.stage = "script"; checkpoint(job, "Planning the response and German script with Claude");
     const response = await planAgentResponse(job, store.session(job.sessionId)!, loadWinningPatterns());
     job.reply = response.reply; job.title = response.title; job.visualPlan = response.visualPlan;
     job.rationale = response.rationale || undefined; job.usedPatternIds = response.usedPatternIds.length ? response.usedPatternIds : undefined;
     job.scriptDe = response.scriptDe.trim();
+    if (response.action === "video") store.autoTitle(job.sessionId, response.title);
     if (response.action === "chat") { job.scriptDe = undefined; job.status = "done"; job.stage = "complete"; }
     else { job.stage = "voice"; if (!job.autoProduce) job.status = "script_review"; }
     store.db.exec("BEGIN IMMEDIATE");
@@ -51,13 +52,14 @@ async function execute(job: AgentJob) {
     } catch (err) { store.db.exec("ROLLBACK"); throw err; }
     if (job.status !== "running") return;
   }
-  // Blocking claims stop here, before any ElevenLabs or HeyGen spend.
+  // Blocking claims stop here, before any ElevenLabs or HeyGen spend. The script goes back to the
+  // review gate so the wording can be fixed and approved; a plain retry would hit the same rule again.
   const blocked = checkScriptCompliance(job.scriptDe!).filter((f) => f.severity === "block");
   if (blocked.length) {
-    job.status = "needs_review";
-    job.error = `Script needs changes before voice generation: ${blocked.map((f) => f.message).join(" ")}`;
+    job.status = "script_review"; job.stage = "voice"; job.autoProduce = false;
+    job.error = `Script needs changes before voice generation: ${blocked.map((f) => `"${f.match}" — ${f.message}`).join(" ")}`;
     checkpoint(job, job.error);
-    store.message(job.sessionId, "assistant", job.error);
+    store.message(job.sessionId, "assistant", `${job.error} Edit the script in the review panel and approve it to continue.`);
     return;
   }
   const catalog = path.join(REPO_ROOT, "data", "broll", "catalog.json");
@@ -73,6 +75,7 @@ async function execute(job: AgentJob) {
       status: "draft", createdAt: now, updatedAt: now });
     saveMetadata(meta);
   }
+  job.hasProject = true;
   // A file left by an interrupted export is not a completed checkpoint.
   if (meta.status !== "done" || !fs.existsSync(finalVideoFile(job.projectId)) || (job.allowVoiceRetry && job.quality && !job.quality.passed)) {
     if (job.allowVoiceRetry) {

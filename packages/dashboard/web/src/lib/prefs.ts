@@ -22,6 +22,12 @@ export interface Prefs {
   favoriteAvatars: SavedAvatar[];
   recentAvatars: SavedAvatar[];
   agentSessionId: string | null;
+  /** Composer settings follow the person between chats and reloads. Auto-produce is off by default: the script gate is a human checkpoint. */
+  agentComposer: { productionMode: "local" | "heygen"; duration: "10" | "20" | "30" | "45"; auto: boolean; presenter: SavedAvatar | null };
+  /** Unsent brief per chat, so switching chats or reloading never loses typed text. */
+  agentDrafts: Record<string, string>;
+  /** Unsaved script edits per review job. */
+  agentScriptEdits: Record<string, string>;
 }
 
 const DEFAULTS: Prefs = {
@@ -37,6 +43,9 @@ const DEFAULTS: Prefs = {
   favoriteAvatars: [],
   recentAvatars: [],
   agentSessionId: null,
+  agentComposer: { productionMode: "local", duration: "20", auto: false, presenter: null },
+  agentDrafts: {},
+  agentScriptEdits: {},
 };
 
 const KEY = "adFactory.prefs.v1";
@@ -49,7 +58,9 @@ function load(): Prefs {
     // Older single-key value from the previous dashboard.
     const legacySession = localStorage.getItem("agentSessionId");
     const parsed = raw ? (JSON.parse(raw) as Partial<Prefs>) : {};
-    return { ...DEFAULTS, agentSessionId: legacySession, ...parsed };
+    const prefs = { ...DEFAULTS, agentSessionId: legacySession, ...parsed };
+    prefs.agentComposer = { ...DEFAULTS.agentComposer, ...(parsed.agentComposer ?? {}) };
+    return prefs;
   } catch {
     return { ...DEFAULTS };
   }

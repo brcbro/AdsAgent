@@ -53,6 +53,13 @@ Edit through the dashboard or in `metadata.json`.
 
 Describe a video in the chat and run the agent. It writes a German script, generates the voice, cuts B-roll and captions, runs technical quality checks, then waits for approval. The queue is stored in `data/agent-queue/agent.sqlite`. Jobs are retried up to three times. Voice retries after an interrupted request may spend ElevenLabs credits again, so they need an explicit retry.
 
+- **Script gate.** Auto-produce is off by default, so every brief stops at the review panel first. The panel runs the claim check live, shows the character budget (30–1500) and the duration estimate the planner uses (about 14 characters per second), and blocks approval while a blocked claim is present. "Ask the agent to revise" sends your note plus the current script back as the next brief. Sending a new brief while a script awaits review replaces that script (the dashboard asks first).
+- **Blocked scripts.** A script the claim check blocks goes back to the review panel with the finding instead of failing; edit the wording and approve. Stopped jobs with a script offer "Edit script" to reopen the gate.
+- **Video gate.** A finished video shows **Approve** and **Request changes** both in the chat and in the queue. A change request is recorded on the job and dropped into the composer as the next brief.
+- **Chats.** Titles come from the agent's own title for the first brief (or a word-boundary cut of the message). "New chat" reuses an empty chat. Archived chats can be restored from the archive icon in the chat list. Drafts, script edits and composer settings are kept in the browser.
+- **Worker.** Click the worker status in the queue header for restarts, exit codes and the tail of `data/agent-queue/worker.log`.
+- **Shortcuts.** `Alt+C` new chat, `/` focus the brief, `Enter` send, `Shift+Enter` new line.
+
 ## Pronunciation
 
 Text sent to ElevenLabs is rewritten to spoken German (for example `%` → "Prozent", `€` → "Euro", `CFD` → "C F D"). The stored script keeps the written form. Captions show what was actually spoken. Rules: `packages/pipeline/src/pronunciation.ts`.

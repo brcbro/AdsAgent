@@ -84,6 +84,21 @@ export function spokenSeconds(text: string, speed = 1): number {
   return wordCount(text) / WORDS_PER_SECOND / (speed || 1);
 }
 
+/** The agent plans scripts by characters (about 14 per second of energetic German); the review panel uses the same rule. */
+export const SCRIPT_CHARS_PER_SECOND = 14;
+export function scriptSeconds(text: string): number {
+  return text.trim().length / SCRIPT_CHARS_PER_SECOND;
+}
+
+/** Cut at a word boundary with an ellipsis instead of mid-word. */
+export function truncateWords(text: string, max: number): string {
+  const clean = text.trim().replace(/\s+/g, " ");
+  if (clean.length <= max) return clean;
+  const cut = clean.slice(0, max + 1);
+  const at = cut.lastIndexOf(" ");
+  return `${(at > max * 0.5 ? cut.slice(0, at) : cut.slice(0, max)).replace(/[\s.,;:!?—–-]+$/, "")}…`;
+}
+
 export function splitSentences(text: string): string[] {
   return (text.match(/[^.!?…]+[.!?…]+["“”»]?|[^.!?…]+$/g) ?? []).map((s) => s.trim()).filter(Boolean);
 }

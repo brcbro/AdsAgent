@@ -18,7 +18,7 @@ const NAV = [
 export function TopBar() {
   const shell = useShell();
   const navigate = useNavigate();
-  const agent = useAgentState(false).data;
+  const agent = useAgentState().data;
   const activeJobs = agent?.jobs.filter((j) => j.status === "queued" || j.status === "running").length ?? 0;
   const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
 
@@ -76,7 +76,7 @@ export function TopBar() {
 /** Global render state, visible on every page. Clicking it explains what is running and where. */
 function RenderStatusPill() {
   const status = useRenderStatus();
-  const agent = useAgentState(false).data;
+  const agent = useAgentState().data;
   const projects = useProjects().data;
   const config = useStudioConfig().data;
   const navigate = useNavigate();

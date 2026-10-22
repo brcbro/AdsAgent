@@ -29,6 +29,10 @@ export const keys = {
   avatars: (p: object) => ["avatars", p] as const,
   versions: (id: string) => ["versions", id] as const,
   agent: ["agent-state"] as const,
+  agentSession: (id: string) => ["agent-session", id] as const,
+  agentArchived: ["agent-archived"] as const,
+  agentWorker: ["agent-worker"] as const,
+  agentSearch: (q: string) => ["agent-search", q] as const,
   performance: ["performance"] as const,
   projectPerformance: ["project-performance"] as const,
   patterns: ["patterns"] as const,
@@ -82,9 +86,24 @@ export function useVersions(id: string, enabled = true) {
   return useQuery({ queryKey: keys.versions(id), queryFn: () => api.versions(id), enabled, staleTime: 0 });
 }
 
-export function useAgentState(active: boolean) {
-  return useQuery({ queryKey: keys.agent, queryFn: api.agentState, refetchInterval: active ? 3_000 : 12_000 });
+/** Chat list and queue. Polls quickly only while a job is queued or running somewhere. */
+export function useAgentState() {
+  return useQuery({
+    queryKey: keys.agent, queryFn: api.agentState,
+    refetchInterval: (q) => (q.state.data?.jobs.some((j) => j.status === "queued" || j.status === "running") ? 3_000 : 10_000),
+  });
 }
+/** One chat's full message history; `busy` means a job in this chat is still producing. */
+export function useAgentSession(id: string | undefined, busy: boolean) {
+  return useQuery({
+    queryKey: keys.agentSession(id ?? ""), queryFn: () => api.agentSession(id!), enabled: !!id,
+    refetchInterval: busy ? 2_500 : 10_000,
+    retry: (count, err) => (err as { status?: number }).status !== 404 && count < 2,
+  });
+}
+export const useArchivedSessions = (enabled: boolean) => useQuery({ queryKey: keys.agentArchived, queryFn: api.archivedSessions, enabled, staleTime: 0 });
+export const useWorkerInfo = (enabled: boolean) => useQuery({ queryKey: keys.agentWorker, queryFn: () => api.workerInfo(120), enabled, refetchInterval: enabled ? 4_000 : false });
+export const useSessionSearch = (q: string) => useQuery({ queryKey: keys.agentSearch(q), queryFn: () => api.searchSessions(q), enabled: q.trim().length > 0, staleTime: 15_000, placeholderData: keepPreviousData });
 
 export const usePerformance = () => useQuery({ queryKey: keys.performance, queryFn: api.performance, staleTime: 10_000 });
 export const useAdSeries = (id: string | undefined) =>

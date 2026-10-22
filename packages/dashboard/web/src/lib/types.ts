@@ -157,6 +157,14 @@ export interface QualityReport { passed: boolean; checkedAt: string; durationSec
 
 export interface AgentMessage { role: "user" | "assistant"; text: string; at: string }
 export interface AgentSession { id: string; title: string; createdAt: string; messages: AgentMessage[]; titleLocked?: boolean; archivedAt?: string }
+/** Chat list entry: no message bodies, just what the sidebar shows. */
+export interface AgentSessionSummary {
+  id: string; title: string; createdAt: string; updatedAt: string; messageCount: number; lastMessage?: AgentMessage; titleLocked?: boolean; archivedAt?: string;
+}
+export interface ComplianceFinding { severity: "block" | "warn"; rule: string; match: string; message: string }
+/** Result of /api/agent/script-check: claim findings plus the duration estimate the planner itself uses. */
+export interface ScriptCheck { findings: ComplianceFinding[]; chars: number; minChars: number; maxChars: number; seconds: number; charsPerSecond: number }
+export interface WorkerInfo { running: boolean; restarts: number; startedAt?: string; lastExit?: string; lastExitCode: number | null; log: string[] }
 
 export interface AgentJob {
   productionMode?: "local" | "heygen";
@@ -183,12 +191,17 @@ export interface AgentJob {
   error?: string;
   approvedAt?: string;
   approvedBy?: string;
+  rejectedAt?: string;
+  rejectionNote?: string;
+  hasProject?: boolean;
   events: Array<{ at: string; text: string }>;
 }
 
 export interface AgentState {
-  sessions: AgentSession[];
+  sessions: AgentSessionSummary[];
+  /** The most recent jobs plus every active one; older history loads through /api/agent/jobs. */
   jobs: AgentJob[];
+  totalJobs: number;
   workerRunning: boolean;
   mode?: string;
 }
