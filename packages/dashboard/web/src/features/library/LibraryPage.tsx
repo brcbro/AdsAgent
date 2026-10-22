@@ -1,12 +1,16 @@
-import { useState } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
 import { NavLink, Navigate, useParams } from "react-router";
-import { ChevronLeft, ChevronRight, Film, Music, UserRound } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { AlertCircle, ChevronLeft, ChevronRight, Film, Music, Plus, Sparkles, UserRound } from "lucide-react";
+import { api, errorMessage } from "@/lib/api";
 import { cn } from "@/lib/format";
 import { useDebounced } from "@/lib/hooks";
-import { useAvatars, useBroll, useMusic } from "@/lib/queries";
+import { keys, useAvatars, useBroll, useBrollIngest, useMusic } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
-import { Badge, EmptyState, SearchInput, Segmented, Skeleton } from "@/components/ui/primitives";
-import { BrollBrowser } from "../studio/BrollBrowser";
+import { Badge, EmptyState, SearchInput, Segmented, Skeleton, Spinner } from "@/components/ui/primitives";
+import { BROLL_CATEGORIES, BrollBrowser, categoryOptions } from "../studio/BrollBrowser";
+import { AddClipsDialog, isVideoFile } from "./AddClipsDialog";
 import { TrackRow, useTrackPreview } from "../studio/panels/AudioPanel";
 import { AvatarImage } from "../studio/AvatarPickerDialog";
 
@@ -42,10 +46,85 @@ export default function LibraryPage() {
             </NavLink>
           ))}
         </nav>
-        {tab === "broll" && <BrollBrowser />}
+        {tab === "broll" && <BrollLibrary />}
         {tab === "music" && <MusicLibrary />}
         {tab === "avatars" && <AvatarLibrary />}
       </div>
+    </div>
+  );
+}
+
+/** B-roll tab: the browser plus Add clips, Classify unclassified and the live classifier status. Dropping files anywhere here opens the dialog. */
+function BrollLibrary() {
+  const queryClient = useQueryClient();
+  const broll = useBroll();
+  const ingest = useBrollIngest();
+  const [addOpen, setAddOpen] = useState(false);
+  const [dropped, setDropped] = useState<File[] | undefined>();
+  const [dragging, setDragging] = useState(false);
+  const [triggering, setTriggering] = useState(false);
+  const dragDepth = useRef(0);
+  const state = ingest.data;
+  const fromCatalog = categoryOptions(broll.data ?? []);
+  const categories = state?.categories?.length ? state.categories : fromCatalog.length ? fromCatalog : BROLL_CATEGORIES;
+  const pending = (broll.data ?? []).filter((c) => c.pending).length;
+  const needsReview = (broll.data ?? []).filter((c) => c.needsReview && !c.pending).length;
+
+  // While the classifier works, clips move from the inbox into their folders: keep the grid in step.
+  const progress = `${state?.running}-${state?.done}-${state?.lastRunAt}`;
+  useEffect(() => { void queryClient.invalidateQueries({ queryKey: keys.broll }); }, [progress, queryClient]);
+
+  const onDragEnter = (e: DragEvent) => { if (!e.dataTransfer.types.includes("Files")) return; e.preventDefault(); dragDepth.current++; setDragging(true); };
+  const onDragLeave = () => { dragDepth.current = Math.max(0, dragDepth.current - 1); if (dragDepth.current === 0) setDragging(false); };
+  const onDrop = (e: DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault(); dragDepth.current = 0; setDragging(false);
+    const files = [...e.dataTransfer.files].filter(isVideoFile);
+    if (!files.length) { toast.error("Drop MP4, MOV or WebM clips"); return; }
+    setDropped(files); setAddOpen(true);
+  };
+  const classifyNow = async () => {
+    setTriggering(true);
+    try { await api.runBrollIngest(); void queryClient.invalidateQueries({ queryKey: keys.brollIngest }); toast.success("Classification started"); }
+    catch (err) { toast.error("Couldn't start the classifier", { description: errorMessage(err) }); }
+    finally { setTriggering(false); }
+  };
+  const lastError = state?.errors?.[state.errors.length - 1];
+  const errorCount = state?.errors?.length ?? 0;
+
+  return (
+    <div className={cn("relative space-y-4 rounded-lg transition-shadow", dragging && "ring-2 ring-accent ring-offset-4 ring-offset-bg")}
+      onDragEnter={onDragEnter} onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }} onDragLeave={onDragLeave} onDrop={onDrop}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="primary" size="sm" onClick={() => { setDropped(undefined); setAddOpen(true); }}><Plus /> Add clips</Button>
+        <Button variant="secondary" size="sm" onClick={classifyNow} disabled={triggering || !!state?.running} loading={triggering}><Sparkles /> Classify unclassified</Button>
+        <div className="ml-auto flex min-w-0 items-center gap-2 text-xs text-fg-muted" aria-live="polite" data-testid="broll-ingest-status">
+          {state?.running ? (
+            <><Spinner className="size-3.5" /> <span className="truncate">{state.paused ? "Paused while a render runs" : `Classifying ${Math.min(state.done + 1, Math.max(state.total, 1))} of ${state.total}`}{state.current ? ` · ${state.current}` : ""}</span></>
+          ) : pending > 0 ? (
+            <span>{pending} clip{pending === 1 ? "" : "s"} waiting for the classifier</span>
+          ) : state?.lastResult ? (
+            <span className="truncate" title={state.lastRunAt}>Last run: {state.lastResult}</span>
+          ) : null}
+          {needsReview > 0 && <Badge tone="warning">{needsReview} to review</Badge>}
+        </div>
+      </div>
+      {lastError && !state?.running && (
+        <div className="flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-subtle p-3 text-sm text-danger">
+          <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <div className="min-w-0">
+            <p className="font-medium">{errorCount} clip{errorCount === 1 ? "" : "s"} could not be classified and {errorCount === 1 ? "stays" : "stay"} in the inbox.</p>
+            <p className="truncate text-xs"><span className="font-mono">{lastError.file.split(/[\\/]/).pop()}</span> — {lastError.message}</p>
+          </div>
+        </div>
+      )}
+      <BrollBrowser />
+      {dragging && (
+        <div className="pointer-events-none absolute inset-0 grid place-items-center rounded-lg bg-accent-subtle/80">
+          <p className="rounded-md bg-surface px-4 py-2 text-sm font-medium text-accent shadow-md">Drop clips to add them to the library</p>
+        </div>
+      )}
+      <AddClipsDialog open={addOpen} onOpenChange={setAddOpen} categories={categories} initialFiles={dropped} />
     </div>
   );
 }

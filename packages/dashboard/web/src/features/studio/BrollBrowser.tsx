@@ -1,12 +1,44 @@
 import { useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Ban, ChevronLeft, ChevronRight, Clapperboard, FolderOpen, Pin, PinOff } from "lucide-react";
+import { api, errorMessage } from "@/lib/api";
 import { clipTitle, cn } from "@/lib/format";
-import { useBroll } from "@/lib/queries";
+import { keys, useBroll } from "@/lib/queries";
 import type { BrollClip } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
-import { Badge, Chip, EmptyState, KeyValue, SearchInput, Skeleton } from "@/components/ui/primitives";
+import { Badge, Chip, EmptyState, KeyValue, SearchInput, Select, Skeleton } from "@/components/ui/primitives";
 import { Tip } from "@/components/ui/tooltip";
+
+/** The agent's categories; the Library may add folders, which show up through the catalog. */
+export const BROLL_CATEGORIES = ["Trading", "Lifestyle", "Deep Work", "Community"];
+const NEEDS_REVIEW = "@review";
+
+/** Categories offered for confirming or correcting a clip: the fixed four plus anything already in the catalog. */
+export function categoryOptions(clips: BrollClip[]): string[] {
+  const names = new Set(BROLL_CATEGORIES);
+  for (const c of clips) if (c.category && c.category !== "Other" && c.category !== "Unsorted") names.add(c.category);
+  return [...names];
+}
+
+/** Human confirm/correct of a clip's category; the catalog cache is patched from the server's reply. */
+export function useSetClipCategory() {
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState<string | null>(null);
+  const setCategory = async (clip: BrollClip, category: string) => {
+    if (category === clip.category && !clip.needsReview) return;
+    setBusy(clip.file);
+    try {
+      const updated = await api.setBrollCategory(clip.file, category);
+      queryClient.setQueryData<BrollClip[]>(keys.broll, (prev) => prev?.map((c) => (c.file === clip.file ? updated : c)));
+      toast.success(`${clipTitle(clip.name)} → ${category}`);
+    } catch (err) {
+      toast.error("Couldn't change the category", { description: errorMessage(err) });
+    } finally { setBusy(null); }
+  };
+  return { setCategory, busy };
+}
 
 /** Per-project clip choices; when given, cards can be pinned or excluded. */
 export interface ClipChoices {
@@ -17,7 +49,7 @@ export interface ClipChoices {
 }
 
 export type ClipState = "pinned" | "excluded" | null;
-type Filter = "" | "@pinned" | "@excluded";
+type Filter = "" | "@pinned" | "@excluded" | typeof NEEDS_REVIEW;
 
 function stateOf(choices: ClipChoices | undefined, file: string): ClipState {
   if (choices?.pinned.includes(file)) return "pinned";
@@ -45,6 +77,9 @@ export function BrollBrowser({ compact, choices }: { compact?: boolean; choices?
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("");
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const review = useSetClipCategory();
+  const options = useMemo(() => categoryOptions(clips), [clips]);
+  const needsReview = useMemo(() => clips.filter((c) => c.needsReview && !c.pending).length, [clips]);
 
   const counts = useMemo(() => clips.reduce<Record<string, number>>((all, c) => ({ ...all, [c.category]: (all[c.category] ?? 0) + 1 }), {}), [clips]);
   const filtered = useMemo(() => {
@@ -53,9 +88,10 @@ export function BrollBrowser({ compact, choices }: { compact?: boolean; choices?
       const filter = category as Filter | string;
       if (filter === "@pinned") return stateOf(choices, c.file) === "pinned";
       if (filter === "@excluded") return stateOf(choices, c.file) === "excluded";
+      if (filter === NEEDS_REVIEW) return !!c.needsReview && !c.pending;
       return !filter || c.category === filter;
     };
-    return clips.filter((c) => byCategory(c) && (!q || [clipTitle(c.name), c.category, ...(c.tags ?? [])].join(" ").toLowerCase().includes(q)));
+    return clips.filter((c) => byCategory(c) && (!q || [clipTitle(c.name), c.category, c.description ?? "", ...(c.tags ?? [])].join(" ").toLowerCase().includes(q)));
   }, [clips, query, category, choices]);
 
   if (broll.isPending) {
@@ -79,6 +115,7 @@ export function BrollBrowser({ compact, choices }: { compact?: boolean; choices?
           <Chip active={!category} onClick={() => setCategory("")} count={clips.length}>All</Chip>
           {choices && <Chip active={category === "@pinned"} onClick={() => setCategory(category === "@pinned" ? "" : "@pinned")} count={choices.pinned.length}>Pinned</Chip>}
           {choices && <Chip active={category === "@excluded"} onClick={() => setCategory(category === "@excluded" ? "" : "@excluded")} count={choices.excluded.length}>Excluded</Chip>}
+          {needsReview > 0 && <Chip active={category === NEEDS_REVIEW} onClick={() => setCategory(category === NEEDS_REVIEW ? "" : NEEDS_REVIEW)} count={needsReview}>Needs review</Chip>}
           {Object.entries(counts).map(([name, n]) => (
             <Chip key={name} active={category === name} onClick={() => setCategory(category === name ? "" : name)} count={n}>{name}</Chip>
           ))}
@@ -91,30 +128,48 @@ export function BrollBrowser({ compact, choices }: { compact?: boolean; choices?
         <ul className={cn("grid gap-2", compact ? "grid-cols-2" : "grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3")}>
           {filtered.map((clip, i) => (
             <li key={clip.file} className="[content-visibility:auto] [contain-intrinsic-size:auto_160px]">
-              <ClipCard clip={clip} choices={choices} onOpen={() => setOpenIndex(i)} />
+              <ClipCard clip={clip} choices={choices} onOpen={() => setOpenIndex(i)} options={options} review={review} />
             </li>
           ))}
         </ul>
       ) : (
         <p className="py-6 text-center text-sm text-fg-muted">No clips match. Try another search or filter.</p>
       )}
-      <ClipPreviewDialog clips={filtered} index={openIndex} onIndexChange={setOpenIndex} choices={choices} />
+      <ClipPreviewDialog clips={filtered} index={openIndex} onIndexChange={setOpenIndex} choices={choices} options={options} review={review} />
     </div>
   );
 }
 
-function ClipCard({ clip, onOpen, choices }: { clip: BrollClip; onOpen: () => void; choices?: ClipChoices }) {
+type Review = ReturnType<typeof useSetClipCategory>;
+
+/** Confidence as a percentage label, e.g. "54%". */
+function pct(confidence: number | undefined): string { return `${Math.round((confidence ?? 0) * 100)}%`; }
+
+/** Confirm/correct dropdown shown on flagged cards and in the preview dialog. */
+function CategorySelect({ clip, options, review, className, id }: { clip: BrollClip; options: string[]; review: Review; className?: string; id?: string }) {
+  const known = options.includes(clip.category) ? options : [clip.category, ...options];
+  return (
+    <Select id={id} aria-label={`Category for ${clipTitle(clip.name)}`} value={clip.category} disabled={review.busy === clip.file || !!clip.pending}
+      onChange={(e) => void review.setCategory(clip, e.target.value)} className={cn("h-8 text-xs", className)}>
+      {known.map((c) => <option key={c} value={c} disabled={c === "Other" || c === "Unsorted"}>{c === "Other" || c === "Unsorted" ? `${c} (choose one)` : c}</option>)}
+    </Select>
+  );
+}
+
+function ClipCard({ clip, onOpen, choices, options, review }: { clip: BrollClip; onOpen: () => void; choices?: ClipChoices; options: string[]; review: Review }) {
   const video = useRef<HTMLVideoElement>(null);
   const [hover, setHover] = useState(false);
   const title = clipTitle(clip.name);
   const state = stateOf(choices, clip.file);
+  const flagged = !!clip.needsReview && !clip.pending;
 
   return (
     <div
       className={cn(
         "group relative overflow-hidden rounded-lg border bg-surface transition-all duration-150 hover:shadow-md",
-        state === "pinned" ? "border-accent ring-2 ring-accent/20" : "border-line hover:border-line-strong",
+        state === "pinned" ? "border-accent ring-2 ring-accent/20" : flagged ? "border-warning/50" : "border-line hover:border-line-strong",
       )}
+      data-needs-review={flagged || undefined}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => { setHover(false); video.current?.pause(); }}
     >
@@ -134,6 +189,8 @@ function ClipCard({ clip, onOpen, choices }: { clip: BrollClip; onOpen: () => vo
             <video ref={video} src={clip.clipUrl} autoPlay muted loop playsInline className="absolute inset-0 size-full object-cover animate-fade-in" aria-hidden />
           )}
           <Badge className="absolute top-1.5 left-1.5 border-transparent bg-black/60 text-white">{clip.category}</Badge>
+          {clip.pending && <Badge tone="info" dot pulse className="absolute bottom-1.5 left-1.5">Classifying…</Badge>}
+          {flagged && <Badge tone="warning" className="absolute bottom-1.5 left-1.5">Review · {pct(clip.confidence)}</Badge>}
         </div>
         <div className="flex items-center gap-1.5 px-2.5 py-2">
           <span className="min-w-0 flex-1 truncate text-xs font-medium text-fg" title={title}>{title}</span>
@@ -141,6 +198,12 @@ function ClipCard({ clip, onOpen, choices }: { clip: BrollClip; onOpen: () => vo
           {state === "excluded" && <Badge tone="danger"><Ban className="size-3" /> Excluded</Badge>}
         </div>
       </button>
+      {flagged && (
+        <div className="flex items-center gap-2 border-t border-warning/30 bg-warning-subtle px-2.5 py-1.5">
+          <span className="shrink-0 text-xs text-warning">Confirm:</span>
+          <CategorySelect clip={clip} options={options} review={review} className="min-w-0 flex-1" />
+        </div>
+      )}
       {choices && (
         <div className={cn("absolute top-1.5 right-1.5 flex gap-1 transition-opacity", state ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100")}>
           <Tip content={state === "pinned" ? "Unpin" : "Pin — always use this clip"}>
@@ -163,8 +226,8 @@ function ClipCard({ clip, onOpen, choices }: { clip: BrollClip; onOpen: () => vo
   );
 }
 
-function ClipPreviewDialog({ clips, index, onIndexChange, choices }:
-  { clips: BrollClip[]; index: number | null; onIndexChange: (i: number | null) => void; choices?: ClipChoices }) {
+function ClipPreviewDialog({ clips, index, onIndexChange, choices, options, review }:
+  { clips: BrollClip[]; index: number | null; onIndexChange: (i: number | null) => void; choices?: ClipChoices; options: string[]; review: Review }) {
   const clip = index !== null ? clips[index] : undefined;
   const go = (delta: number) => { if (index !== null) onIndexChange((index + delta + clips.length) % clips.length); };
   const state = clip ? stateOf(choices, clip.file) : null;
@@ -203,8 +266,14 @@ function ClipPreviewDialog({ clips, index, onIndexChange, choices }:
               : <p className="p-8 text-sm text-white/60">This clip is outside the data folder and can't be previewed.</p>}
           </div>
           <div className="space-y-3">
+            <div>
+              <label htmlFor="clip-dialog-category" className="mb-1.5 block text-xs font-medium text-fg-muted">Category{clip.needsReview && !clip.pending ? " · needs review" : ""}</label>
+              <CategorySelect id="clip-dialog-category" clip={clip} options={options} review={review} className="w-full" />
+            </div>
             <KeyValue items={[
-              { label: "Category", value: clip.category },
+              ...(clip.pending ? [{ label: "Status", value: "Waiting for the classifier" }] : []),
+              ...(clip.source ? [{ label: "Decided by", value: clip.source === "human" ? "You" : clip.source === "classifier" ? `Classifier (${pct(clip.confidence)})` : "Folder" }] : []),
+              ...(clip.description ? [{ label: "Shows", value: clip.description }] : []),
               { label: "Source", value: clip.sourceFolder ?? "—" },
               { label: "File", value: <span title={clip.name}>{clip.name}</span> },
             ]} />

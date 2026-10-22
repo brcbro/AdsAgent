@@ -5,13 +5,17 @@ import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { BROLL_DIR, REPO_ROOT, ensureDir } from "@ai-ads/core";
-import { categoryFromPath, tagsFromName } from "./broll-match.js";
+import { categoryFromPath, tagsFromName, type BrollCatalogEntry } from "./broll-match.js";
 
 const run = promisify(execFile);
 const BROLL_SOURCE = path.join(os.homedir(), "Downloads", "B-Roll");
 const STATE_PATH = path.join(REPO_ROOT, "data", "broll-state.json");
-const CATALOG_PATH = path.join(BROLL_DIR, "catalog.json");
-const PREVIEWS_DIR = path.join(BROLL_DIR, "previews");
+export const CATALOG_PATH = path.join(BROLL_DIR, "catalog.json");
+export const PREVIEWS_DIR = path.join(BROLL_DIR, "previews");
+export const CLIPS_DIR = path.join(BROLL_DIR, "clips");
+/** Watch folder: clips dropped or uploaded here are classified and then moved under clips/<Category>/. */
+export const INBOX_DIR = path.join(BROLL_DIR, "inbox");
+export const VIDEO_EXT = /\.(mp4|mov|webm)$/i;
 
 export function listBrollClips(): string[] {
   const clipsDir = path.join(BROLL_DIR, "clips");
@@ -22,7 +26,7 @@ export function listBrollClips(): string[] {
       if (name === "previews") continue;
       const p = path.join(dir, name);
       if (fs.statSync(p).isDirectory()) walk(p);
-      else if (/\.(mp4|mov|webm)$/i.test(name)) clips.push(p);
+      else if (VIDEO_EXT.test(name)) clips.push(p);
     }
   };
   walk(clipsDir);
@@ -107,60 +111,114 @@ export function syncBrollClips(): number {
   return n;
 }
 
-/** Screenshot each B-roll clip for catalog reference (skips existing). */
+/** Preview jpg path for a clip (one frame at 35 % of the duration). */
+export function previewPathFor(clip: string): string {
+  return path.join(PREVIEWS_DIR, `${path.basename(clip).replace(/[^a-zA-Z0-9._-]/g, "_")}.jpg`);
+}
+
+/** Extract the preview frame unless it already exists; returns the repo-relative path or "" when ffmpeg failed. */
+export async function ensurePreview(clip: string): Promise<string> {
+  ensureDir(PREVIEWS_DIR);
+  const preview = previewPathFor(clip);
+  if (!fs.existsSync(preview)) {
+    try {
+      const { stdout } = await run("ffprobe", [
+        "-v", "error", "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1", clip,
+      ]);
+      const dur = parseFloat(stdout.trim()) || 5;
+      const t = Math.max(0, Math.min(dur * 0.35, dur - 0.1));
+      await run("ffmpeg", ["-y", "-ss", String(t), "-i", clip, "-frames:v", "1", "-q:v", "3", preview], {
+        timeout: 30_000,
+      });
+    } catch {
+      /* bad clip: no preview */
+    }
+  }
+  return fs.existsSync(preview) ? path.relative(REPO_ROOT, preview) : "";
+}
+
+/** Catalog entry for a clip from its path alone (folder category, name tags); `previous` keeps classifier/human fields. */
+export function catalogEntryFor(clip: string, preview: string, previous?: BrollCatalogEntry): BrollCatalogEntry {
+  const name = path.basename(clip);
+  const rel = clip.includes(BROLL_SOURCE) ? path.relative(BROLL_SOURCE, clip) : name;
+  const sourceFolder = rel.includes(path.sep) ? rel.split(path.sep)[0]! : "Other";
+  const folderCategory = categoryFromPath(clip);
+  const entry: BrollCatalogEntry = { file: clip, name, preview, category: folderCategory, tags: tagsFromName(name), sourceFolder };
+  if (!previous) return entry;
+  // A human or classifier decision outranks the folder heuristics only while the clip still sits in that folder.
+  const keep = previous.source && previous.source !== "folder" && previous.category === folderCategory;
+  return {
+    ...entry,
+    ...(previous.tags?.length ? { tags: previous.tags } : {}),
+    ...(keep ? { source: previous.source, confidence: previous.confidence, needsReview: previous.needsReview,
+      classifiedAt: previous.classifiedAt } : {}),
+    ...(previous.description ? { description: previous.description } : {}),
+    ...(previous.addedAt ? { addedAt: previous.addedAt } : {}),
+  };
+}
+
+/** Screenshot each B-roll clip for catalog reference (skips existing previews, keeps classifier fields). */
 export async function buildBrollCatalog(limit?: number): Promise<number> {
   ensureDir(PREVIEWS_DIR);
   const clips = listBrollClips();
-  const catalog: Array<{
-    file: string;
-    name: string;
-    preview: string;
-    category: string;
-    tags: string[];
-    sourceFolder: string;
-  }> = [];
+  const previous = new Map(loadBrollCatalog().map((e) => [e.file, e]));
+  const catalog: BrollCatalogEntry[] = [];
   let done = 0;
-
   for (const clip of clips) {
     if (limit && done >= limit) break;
-    const name = path.basename(clip);
-    const preview = path.join(PREVIEWS_DIR, `${name.replace(/[^a-zA-Z0-9._-]/g, "_")}.jpg`);
-    const category = categoryFromPath(clip);
-    const rel = clip.includes(BROLL_SOURCE) ? path.relative(BROLL_SOURCE, clip) : name;
-    const sourceFolder = rel.includes(path.sep) ? rel.split(path.sep)[0]! : "Other";
-    const tags = tagsFromName(name);
-
-    if (!fs.existsSync(preview)) {
-      try {
-        const { stdout } = await run("ffprobe", [
-          "-v", "error", "-show_entries", "format=duration",
-          "-of", "default=noprint_wrappers=1:nokey=1", clip,
-        ]);
-        const dur = parseFloat(stdout.trim()) || 5;
-        const t = Math.min(dur * 0.35, dur - 0.1);
-        await run("ffmpeg", ["-y", "-ss", String(t), "-i", clip, "-frames:v", "1", "-q:v", "3", preview], {
-          timeout: 30_000,
-        });
-        done++;
-      } catch {
-        /* skip bad clips */
-      }
-    }
-    catalog.push({
-      file: clip,
-      name,
-      preview: fs.existsSync(preview) ? path.relative(REPO_ROOT, preview) : "",
-      category,
-      tags,
-      sourceFolder,
-    });
+    const had = fs.existsSync(previewPathFor(clip));
+    const preview = await ensurePreview(clip);
+    if (!had && preview) done++;
+    catalog.push(catalogEntryFor(clip, preview, previous.get(clip)));
   }
-
-  fs.writeFileSync(CATALOG_PATH, JSON.stringify(catalog, null, 2));
+  writeBrollCatalog(catalog);
   return catalog.length;
 }
 
-export function loadBrollCatalog() {
+export function writeBrollCatalog(catalog: BrollCatalogEntry[]): void {
+  ensureDir(path.dirname(CATALOG_PATH));
+  const tmp = `${CATALOG_PATH}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(catalog, null, 2));
+  fs.renameSync(tmp, CATALOG_PATH);
+}
+
+/** Replace or add entries by file path and drop `removeFiles`; other entries are untouched. */
+export function upsertCatalog(entries: BrollCatalogEntry[], removeFiles: string[] = []): BrollCatalogEntry[] {
+  const drop = new Set(removeFiles);
+  const byFile = new Map(loadBrollCatalog().filter((e) => !drop.has(e.file)).map((e) => [e.file, e]));
+  for (const entry of entries) byFile.set(entry.file, entry);
+  const catalog = [...byFile.values()].sort((a, b) => a.file.localeCompare(b.file));
+  writeBrollCatalog(catalog);
+  return catalog;
+}
+
+/** `name.mp4` → `name-2.mp4`, `name-3.mp4`… until no file of that name exists in `dir`. */
+export function uniqueDestination(dir: string, name: string): string {
+  const ext = path.extname(name);
+  const stem = name.slice(0, name.length - ext.length);
+  let candidate = path.join(dir, name);
+  for (let i = 2; fs.existsSync(candidate); i++) candidate = path.join(dir, `${stem}-${i}${ext}`);
+  return candidate;
+}
+
+/** Only ASCII letters, digits, dot, dash and underscore survive; keeps the extension. */
+export function safeClipName(name: string): string {
+  const base = path.basename(name).replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 120);
+  return base || `clip-${Date.now()}`;
+}
+
+/** Video files in the inbox, oldest first; `.part` uploads in progress are not videos. */
+export function listInboxClips(): string[] {
+  if (!fs.existsSync(INBOX_DIR)) return [];
+  return fs.readdirSync(INBOX_DIR)
+    .filter((n) => VIDEO_EXT.test(n))
+    .map((n) => path.join(INBOX_DIR, n))
+    .filter((p) => fs.statSync(p).isFile())
+    .sort((a, b) => fs.statSync(a).mtimeMs - fs.statSync(b).mtimeMs);
+}
+
+export function loadBrollCatalog(): BrollCatalogEntry[] {
   if (!fs.existsSync(CATALOG_PATH)) return [];
-  return JSON.parse(fs.readFileSync(CATALOG_PATH, "utf-8"));
+  try { return JSON.parse(fs.readFileSync(CATALOG_PATH, "utf-8")); } catch { return []; }
 }

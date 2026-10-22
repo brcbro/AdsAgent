@@ -1,5 +1,5 @@
 import type {
-  AgentJob, AgentSession, AgentSessionSummary, AgentState, ScriptCheck, WorkerInfo, AvatarPage, BrollClip, CaptionPreset, MusicTrack,
+  AgentJob, AgentSession, AgentSessionSummary, AgentState, ScriptCheck, WorkerInfo, AvatarPage, BrollClip, BrollImportResult, BrollIngestState, CaptionPreset, MusicTrack,
   Project, ProjectDraft, RenderStatus, RenderVersion, StudioConfig,
   AdSeriesPoint, KbBriefing, PatternsResponse, PerformanceOverview, PlatformAd, ProjectPerformance, Suggestion, SuggestionKind, SyncReport, Teardown, TeardownReport,
 } from "./types";
@@ -61,6 +61,28 @@ export const api = {
   presets: () => request<CaptionPreset[]>("/api/caption-presets"),
   music: () => request<MusicTrack[]>("/api/music-tracks"),
   broll: () => request<BrollClip[]>("/api/broll/catalog"),
+  brollIngest: () => request<BrollIngestState>("/api/broll/ingest"),
+  runBrollIngest: () => request<BrollIngestState>("/api/broll/ingest/run", { json: {} }),
+  importBroll: (paths: string[], category: string) => request<BrollImportResult>("/api/broll/import", { json: { paths, category } }),
+  setBrollCategory: (file: string, category: string) => request<BrollClip>("/api/broll/clips/category", { json: { file, category } }),
+  /** One streamed PUT per clip with upload progress; resolves with the server's record of the stored file. */
+  uploadBroll: (file: File, category: string, onProgress: (fraction: number) => void, signal?: AbortSignal) =>
+    new Promise<{ ok: true; file: string; name: string; category: string }>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", `/api/broll/upload?name=${enc(file.name)}&category=${enc(category)}`);
+      xhr.setRequestHeader("Content-Type", "application/octet-stream");
+      xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+      xhr.onerror = () => reject(new ApiError("Can't reach the dashboard server. Check that `pnpm dashboard` is running.", 0));
+      xhr.onabort = () => reject(new ApiError("Upload cancelled", 0));
+      xhr.onload = () => {
+        let data: unknown;
+        try { data = JSON.parse(xhr.responseText); } catch { /* not JSON */ }
+        if (xhr.status >= 200 && xhr.status < 300) resolve(data as { ok: true; file: string; name: string; category: string });
+        else reject(new ApiError((data as { error?: string } | undefined)?.error ?? `Upload failed (${xhr.status})`, xhr.status));
+      };
+      signal?.addEventListener("abort", () => xhr.abort());
+      xhr.send(file);
+    }),
   studioConfig: () => request<StudioConfig>("/api/studio-config"),
   avatars: (params: { page: number; q?: string; portrait?: boolean; gender?: string }) => {
     const search = new URLSearchParams({ page: String(params.page) });

@@ -18,6 +18,7 @@
     "avatars": "tsx src/avatars-cli.ts",
     "broll-sync": "tsx src/broll-index.ts sync",
     "broll-catalog": "tsx src/broll-index.ts catalog",
+    "broll-classify": "tsx src/broll-index.ts classify",
     "music-sync": "tsx src/sync-music.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "tsx --test src/*.test.ts",

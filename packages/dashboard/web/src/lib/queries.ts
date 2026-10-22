@@ -25,6 +25,7 @@ export const keys = {
   presets: ["presets"] as const,
   music: ["music"] as const,
   broll: ["broll"] as const,
+  brollIngest: ["broll-ingest"] as const,
   config: ["studio-config"] as const,
   avatars: (p: object) => ["avatars", p] as const,
   versions: (id: string) => ["versions", id] as const,
@@ -70,6 +71,11 @@ const STATIC = { staleTime: 5 * 60_000, refetchOnWindowFocus: false } as const;
 export const usePresets = () => useQuery({ queryKey: keys.presets, queryFn: api.presets, ...STATIC });
 export const useMusic = () => useQuery({ queryKey: keys.music, queryFn: api.music, ...STATIC });
 export const useBroll = () => useQuery({ queryKey: keys.broll, queryFn: api.broll, ...STATIC });
+/** Classifier status; polls fast while a run is active (and refreshes the catalog as clips land), slowly otherwise. */
+export const useBrollIngest = (enabled = true) => useQuery({
+  queryKey: keys.brollIngest, queryFn: api.brollIngest, enabled, staleTime: 1_000,
+  refetchInterval: (q) => (q.state.data?.running ? 2_000 : 15_000),
+});
 export const useStudioConfig = () => useQuery({ queryKey: keys.config, queryFn: api.studioConfig, ...STATIC });
 
 export function useAvatars(params: { page: number; q?: string; portrait?: boolean; gender?: string }, enabled = true) {

@@ -12,6 +12,7 @@ pnpm factory <id> [more-ids...]      # factory settings: ElevenLabs, semantic B-
 pnpm batch-run --list                # list named batches
 pnpm batch-run <name> [--only <id>]  # run a batch (see the list above)
 pnpm avatars                         # cache HeyGen avatars → data/avatars.json
+pnpm broll-classify                  # classify B-roll in data/broll/inbox/ (the dashboard does this automatically)
 pnpm typecheck                       # typecheck pipeline and dashboard
 pnpm --filter @ai-ads/pipeline run test   # unit tests
 ```
@@ -66,7 +67,13 @@ Text sent to ElevenLabs is rewritten to spoken German (for example `%` → "Proz
 
 ## B-roll
 
-Clips live in `data/broll/clips/`. Run `pnpm broll-catalog` after adding clips to generate tags and previews. Portrait clips work best.
+Clips live in `data/broll/clips/<Category>/` (Trading, Lifestyle, Deep Work, Community); `data/broll/catalog.json` holds one entry per clip with its preview, tags and category. Portrait clips work best.
+
+- **Adding clips.** Library → B-roll → **Add clips**: pick or drop MP4/MOV/WebM files (each is streamed to the server with its own progress bar), or switch to **Local paths** and paste file or folder paths for big batches on this machine (files are copied; the originals stay). Dropping files anywhere on the B-roll tab opens the same dialog. The default **Auto-classify** sends clips to `data/broll/inbox/`; choosing a category stores them directly under that folder as confirmed.
+- **Inbox.** Anything copied into `data/broll/inbox/` by hand is picked up too, once the file has stopped changing for a few seconds. Clips dropped straight into a category folder are catalogued with that folder as their category (no model call).
+- **Classifier.** The dashboard runs an always-on job that samples three frames from each inbox clip, asks the configured LLM (`LLM_PROVIDER`, `ANTHROPIC_MODEL`; override with `BROLL_CLASSIFY_MODEL`) for a category, tags, a confidence and a one-line description, then moves the clip under `clips/<Category>/` and writes the catalog entry. Confidence below `BROLL_REVIEW_THRESHOLD` (default 0.7), or a category outside the list, flags the clip **Needs review**. Confirmed clips are never re-classified, so re-running is safe. The job pauses while a manual render or an agent job runs (same `data/agent-queue/manual-render.lock` rule as the worker) and holds `data/agent-queue/broll-ingest.lock` so only one run is active. Progress and errors show in the Library header and in `data/broll/ingest-state.json`; a clip that fails (for example, no API key) stays in the inbox and is retried after ten minutes or on the next manual run.
+- **Review.** The **Needs review** chip lists flagged clips with the classifier's confidence; pick the right category on the card or in the preview dialog to confirm. Any clip's category can be corrected from its preview dialog. Flagged clips are still available to the agent under their suggested category until corrected.
+- **Manual runs.** **Classify unclassified** in the Library, or `pnpm broll-classify` from a terminal, processes the inbox, new files in category folders and leftover "Other" entries. `pnpm broll-catalog` still rebuilds the whole catalog (keeping classifier and human decisions).
 
 ## Music
 

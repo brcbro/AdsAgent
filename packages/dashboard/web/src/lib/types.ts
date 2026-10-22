@@ -110,8 +110,39 @@ export interface BrollClip {
   category: string;
   tags?: string[];
   sourceFolder?: string;
+  /** How the category was decided; missing means hand-sorted into its folder. */
+  source?: "folder" | "classifier" | "human";
+  confidence?: number;
+  needsReview?: boolean;
+  classifiedAt?: string;
+  description?: string;
+  addedAt?: string;
+  /** Still in the inbox, waiting for the classifier. */
+  pending?: true;
   clipUrl: string | null;
   previewUrl: string | null;
+}
+
+export interface BrollIngestState {
+  running: boolean;
+  paused?: boolean;
+  startedAt?: string;
+  total: number;
+  done: number;
+  current?: string;
+  errors: Array<{ file: string; message: string; at: string }>;
+  lastRunAt?: string;
+  lastResult?: string;
+  log?: string[];
+  categories: string[];
+  threshold: number;
+  inboxDir: string;
+}
+
+export interface BrollImportResult {
+  imported: Array<{ source: string; file: string }>;
+  skipped: Array<{ path: string; reason: string }>;
+  category: string;
 }
 
 export interface StudioConfig {

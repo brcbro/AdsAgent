@@ -54,7 +54,15 @@ export function fixtures() {
         rationale: "Opens loss-framed because that hook type ranks 1.6× above average in your account.", usedPatternIds: ["hook_type:loss_framed"] },
     ],
   };
-  return { projects, versions, agent };
+  const broll: Array<Record<string, unknown>> = [
+    { file: "/clips/Trading/chart.mp4", name: "trading_chart__x.mp4", preview: "", category: "Trading", tags: ["chart"], clipUrl: null, previewUrl: null },
+    { file: "/clips/Lifestyle/beach.mp4", name: "beach_walk__y.mp4", preview: "", category: "Lifestyle", tags: ["beach"], clipUrl: null, previewUrl: null },
+    { file: "/clips/Community/desk.mp4", name: "desk_talk__z.mp4", preview: "", category: "Community", tags: ["desk", "talk"], clipUrl: null, previewUrl: null,
+      source: "classifier", confidence: 0.52, needsReview: true, classifiedAt: iso(3), description: "A person talks at a desk with a laptop." },
+  ];
+  const ingest = { running: false, total: 3, done: 3, errors: [] as unknown[], lastRunAt: iso(3), lastResult: "1 classified, 2 catalogued, 0 failed",
+    log: [], categories: ["Trading", "Lifestyle", "Deep Work", "Community"], threshold: 0.7, inboxDir: "E:/data/broll/inbox" };
+  return { projects, versions, agent, broll, ingest };
 }
 
 export interface ApiCall { method: string; path: string; body: unknown }
@@ -102,11 +110,27 @@ export async function mockApi(page: Page) {
     if (method === "GET" && path === "/api/music-tracks") {
       return json([{ file: "data/music/a.mp3", title: "Track A", artist: "Artist", available: true, previewUrl: "/data/music/a.mp3" }]);
     }
-    if (method === "GET" && path === "/api/broll/catalog") {
-      return json([
-        { file: "/clips/Trading/chart.mp4", name: "trading_chart__x.mp4", preview: "", category: "Trading", tags: ["chart"], clipUrl: null, previewUrl: null },
-        { file: "/clips/Lifestyle/beach.mp4", name: "beach_walk__y.mp4", preview: "", category: "Lifestyle", tags: ["beach"], clipUrl: null, previewUrl: null },
-      ]);
+    if (method === "GET" && path === "/api/broll/catalog") return json(data.broll);
+    if (method === "GET" && path === "/api/broll/ingest") return json(data.ingest);
+    if (method === "POST" && path === "/api/broll/ingest/run") { data.ingest.running = true; data.ingest.total = 1; data.ingest.done = 0; return json({ ok: true, ...data.ingest }); }
+    if (method === "PUT" && path === "/api/broll/upload") {
+      const name = url.searchParams.get("name") ?? "clip.mp4";
+      const category = url.searchParams.get("category") ?? "auto";
+      const file = category === "auto" ? `/inbox/${name}` : `/clips/${category}/${name}`;
+      data.broll.push({ file, name, preview: "", category: category === "auto" ? "Unsorted" : category, tags: [], clipUrl: null, previewUrl: null, ...(category === "auto" ? { pending: true } : { source: "human", confidence: 1 }) });
+      return json({ ok: true, file, name, category, bytes: 3 });
+    }
+    if (method === "POST" && path === "/api/broll/import") {
+      const paths = (body as { paths: string[] }).paths;
+      return json({ imported: paths.filter((p) => p.endsWith(".mp4")).map((p) => ({ source: p, file: `/inbox/${p.split(/[\\/]/).pop()}` })),
+        skipped: paths.filter((p) => !p.endsWith(".mp4")).map((p) => ({ path: p, reason: "Not found" })), category: "auto" });
+    }
+    if (method === "POST" && path === "/api/broll/clips/category") {
+      const { file, category } = body as { file: string; category: string };
+      const clip = data.broll.find((c) => c.file === file);
+      if (!clip) return json({ error: "Clip not found" }, 404);
+      Object.assign(clip, { category, source: "human", confidence: 1, needsReview: false, file: file.replace(/\/clips\/[^/]+\//, `/clips/${category}/`) });
+      return json(clip);
     }
     if (method === "GET" && path === "/api/studio-config") {
       return json({ scriptModel: "claude-test", voiceModel: "eleven_test", voiceLanguage: "German (de)", llmProvider: "anthropic",

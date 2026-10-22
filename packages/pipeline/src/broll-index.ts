@@ -1,4 +1,5 @@
 import { syncBrollClips, buildBrollCatalog } from "./broll.js";
+import { runBrollIngest } from "./broll-classify.js";
 
 const cmd = process.argv[2] ?? "sync";
 
@@ -15,7 +16,14 @@ async function main() {
     console.log(`Catalog: ${n} clips → data/broll/catalog.json`);
     return;
   }
-  console.log("Usage: broll-index.ts sync | catalog [limit]");
+  if (cmd === "classify") {
+    console.log("Classifying unclassified B-roll (inbox, new files, unsorted)…");
+    const state = await runBrollIngest({ log: (line) => console.log(line) });
+    console.log(state.lastResult ?? "Nothing to do");
+    for (const e of state.errors) console.log(`  ${e.file}: ${e.message}`);
+    return;
+  }
+  console.log("Usage: broll-index.ts sync | catalog [limit] | classify");
 }
 
 main().catch((e) => {

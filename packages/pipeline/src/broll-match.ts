@@ -9,7 +9,25 @@ export type BrollCatalogEntry = {
   category: string;
   tags?: string[];
   sourceFolder?: string;
+  /** How `category` was decided; missing means the clip was hand-sorted into its folder. */
+  source?: "folder" | "classifier" | "human";
+  /** Classifier confidence 0–1 (1 for a human decision). */
+  confidence?: number;
+  /** Set when the classifier was unsure or could not place the clip; a person confirms it in the Library. */
+  needsReview?: boolean;
+  classifiedAt?: string;
+  /** One-line description of the footage from the vision pass; searchable. */
+  description?: string;
+  addedAt?: string;
 };
+
+/** The categories the agent plans shots with; folder names under data/broll/clips/. */
+export const BROLL_CATEGORIES = ["Trading", "Lifestyle", "Deep Work", "Community"] as const;
+
+/** A category counts as confirmed unless the classifier flagged it or could not place the clip. */
+export function isConfirmedCategory(entry: Pick<BrollCatalogEntry, "category" | "needsReview">): boolean {
+  return !!entry.category && entry.category !== "Other" && entry.category !== "Unsorted" && !entry.needsReview;
+}
 
 /** Map ~/Downloads/B-Roll subfolder names to internal categories. */
 export function categoryFromPath(clipPath: string): string {

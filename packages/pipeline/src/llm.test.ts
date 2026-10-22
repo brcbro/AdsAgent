@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { z } from "zod";
-import { chatJson } from "./llm.js";
+import { chatJson, extractJson } from "./llm.js";
 
 const opts = { schema: z.object({ scriptDe: z.string() }), schemaName: "test_script", system: "Write a script", user: "German test" };
 
@@ -52,4 +52,12 @@ test("Claude and OpenRouter transport, JSON repair, and authentication errors", 
     return Response.json({ choices: [{ message: { content: '{"scriptDe":"Hallo Router"}' } }] });
   };
   assert.deepEqual(await chatJson(opts), { scriptDe: "Hallo Router" });
+});
+
+test("the last JSON object wins when the model echoes the schema or adds prose", () => {
+  assert.deepEqual(extractJson('{"a":1}'), { a: 1 });
+  assert.deepEqual(extractJson("```json\n{\"a\":1}\n```"), { a: 1 });
+  assert.deepEqual(extractJson("{\"type\":\"object\"}\n\nHere is the answer:\n\n{\"category\":\"Trading\",\"tags\":[\"a\",\"b\"]}"), { category: "Trading", tags: ["a", "b"] });
+  assert.deepEqual(extractJson('Sure: {"nested":{"x":"}"}} done'), { nested: { x: "}" } });
+  assert.throws(() => extractJson("no json here"), /No JSON object/);
 });

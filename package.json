@@ -15,6 +15,7 @@
     "factory": "pnpm --filter @ai-ads/pipeline run factory",
     "broll-sync": "pnpm --filter @ai-ads/pipeline run broll-sync",
     "broll-catalog": "pnpm --filter @ai-ads/pipeline run broll-catalog",
+    "broll-classify": "pnpm --filter @ai-ads/pipeline run broll-classify",
     "preview": "pnpm --filter @ai-ads/remotion run preview",
     "typecheck": "pnpm --filter @ai-ads/pipeline run typecheck && pnpm --filter @ai-ads/performance run typecheck && pnpm --filter @ai-ads/dashboard run typecheck",
     "test": "pnpm --filter @ai-ads/pipeline run test && pnpm --filter @ai-ads/performance run test",

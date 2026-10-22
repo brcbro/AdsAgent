@@ -1,11 +1,25 @@
 import { z } from "zod";
 import { config } from "./config.js";
 
+export interface ChatImage { mediaType: "image/jpeg" | "image/png" | "image/webp"; base64: string }
+
 interface ChatJsonOptions<T extends z.ZodType> {
   schema: T;
   schemaName: string;
   system: string;
   user: string;
+  /** Optional images sent before the user text (vision); both providers accept inline base64. */
+  images?: ChatImage[];
+  /** Override the configured model, e.g. a cheaper vision model for bulk classification. */
+  model?: string;
+}
+
+/** The user turn for one provider: plain text, or image blocks followed by the text. */
+export function userContent(provider: "anthropic" | "openrouter", text: string, images: ChatImage[] = []): unknown {
+  if (!images.length) return text;
+  return provider === "anthropic"
+    ? [...images.map((img) => ({ type: "image", source: { type: "base64", media_type: img.mediaType, data: img.base64 } })), { type: "text", text }]
+    : [...images.map((img) => ({ type: "image_url", image_url: { url: `data:${img.mediaType};base64,${img.base64}` } })), { type: "text", text }];
 }
 
 /** Generate validated JSON through the configured provider; repair invalid output once. */
@@ -32,15 +46,15 @@ export async function chatJson<T extends z.ZodType>(opts: ChatJsonOptions<T>): P
           : { Authorization: `Bearer ${config.openRouterApiKey()}`, "Content-Type": "application/json" },
         body: JSON.stringify(anthropic
           ? {
-              model: config.anthropicModel(),
+              model: opts.model ?? config.anthropicModel(),
               max_tokens: 4096,
               thinking: { type: "disabled" },
               system,
-              messages: [{ role: "user", content: opts.user + feedback }],
+              messages: [{ role: "user", content: userContent("anthropic", opts.user + feedback, opts.images) }],
             }
           : {
-              model: config.openRouterModel(),
-              messages: [{ role: "system", content: system }, { role: "user", content: opts.user + feedback }],
+              model: opts.model ?? config.openRouterModel(),
+              messages: [{ role: "system", content: system }, { role: "user", content: userContent("openrouter", opts.user + feedback, opts.images) }],
               response_format: { type: "json_schema", json_schema: { name: opts.schemaName, schema: jsonSchema } },
             }),
       },
@@ -65,7 +79,7 @@ export async function chatJson<T extends z.ZodType>(opts: ChatJsonOptions<T>): P
       : data.choices?.[0]?.message?.content;
     if (!content) throw new Error(`${provider} returned an empty response`);
     try {
-      return opts.schema.parse(JSON.parse(stripFences(content)));
+      return opts.schema.parse(extractJson(content));
     } catch (err) {
       if (attempt === 1) throw err;
       feedback = `\n\nDeine letzte Antwort war kein gültiges JSON nach Schema (${String(err).slice(0, 300)}). Antworte erneut, nur mit dem JSON-Objekt.`;
@@ -77,4 +91,18 @@ export async function chatJson<T extends z.ZodType>(opts: ChatJsonOptions<T>): P
 function stripFences(text: string): string {
   const trimmed = text.trim();
   return trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/)?.[1] ?? trimmed;
+}
+
+/**
+ * The reply as JSON. Models sometimes echo the schema or add a sentence before the object, so when
+ * the whole text does not parse, the last parseable `{…}` block wins.
+ */
+export function extractJson(text: string): unknown {
+  const clean = stripFences(text);
+  try { return JSON.parse(clean); } catch { /* fall through */ }
+  const end = clean.lastIndexOf("}");
+  for (let start = clean.lastIndexOf("{", end); start >= 0; start = clean.lastIndexOf("{", start - 1)) {
+    try { return JSON.parse(clean.slice(start, end + 1)); } catch { /* keep looking */ }
+  }
+  throw new SyntaxError("No JSON object in the response");
 }
