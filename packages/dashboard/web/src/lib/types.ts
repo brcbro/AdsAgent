@@ -239,7 +239,14 @@ export interface AgentState {
 
 /* ---------- Performance (ad metrics from Meta / Google / CSV) ---------- */
 export type AdPlatform = "meta" | "google";
-export interface AdAccount { id: string; platform: AdPlatform; externalId: string; name: string; currency?: string; status: "connected" | "csv" | "disconnected"; lastSyncAt?: string }
+export interface AdAccount { id: string; platform: AdPlatform; externalId: string; name: string; currency?: string; status: "connected" | "csv" | "disconnected"; lastSyncAt?: string; connectionId?: string }
+/** A Meta access token plus the ad accounts it reads; the token itself never reaches the browser. */
+export interface MetaConnection {
+  id: string; platform: "meta"; label: string; accountIds: string[]; apiVersion?: string; conversionActions?: string[]; leadActions?: string[];
+  enabled: boolean; source: "env" | "dashboard"; tokenHint: string; createdAt: string; updatedAt: string;
+}
+export interface MetaConnectionInput { label?: string; accessToken?: string; accountIds?: string; apiVersion?: string; conversionActions?: string; leadActions?: string; enabled?: boolean }
+export interface MetaConnectionTest { ok: true; accounts: Array<{ id: string; name: string; currency?: string; timezone?: string }> }
 export interface PlatformAd {
   id: string; accountId: string; platform: AdPlatform; externalId: string; name: string; campaignName?: string; adsetName?: string;
   thumbnailUrl?: string; projectId?: string; variantKey?: string; firstSeen: string; lastSeen: string;
@@ -257,7 +264,7 @@ export interface PlatformSummary {
 export interface NormalizationReport { platforms: PlatformSummary[]; balanced: boolean; notes: string[] }
 export interface PerformanceOverview {
   accounts: AdAccount[]; leaderboard: LeaderboardRow[];
-  meta: { configured: boolean; accountIds: string[]; apiVersion?: string; conversionActions: string[] };
+  meta: { configured: boolean; connections: MetaConnection[]; accountIds: string[]; apiVersion?: string; conversionActions: string[] };
   google: { configured: boolean; customerIds: string[]; apiVersion?: string; loginCustomerId?: string };
   normalization: NormalizationReport;
   nightly: { enabled: boolean; hour: number; lastRun?: string; lastResult?: string };
@@ -270,7 +277,7 @@ export interface PerformanceOverview {
 }
 export interface SyncReport {
   files: Array<{ file: string; status: "imported" | "unchanged" | "error"; platform?: string; ads?: number; rows?: number; warnings?: string[]; error?: string }>;
-  accounts: Array<{ accountId: string; name: string; status: "synced" | "error"; from?: string; to?: string; ads?: number; rows?: number; error?: string }>;
+  accounts: Array<{ accountId: string; name: string; status: "synced" | "error" | "skipped"; platform?: AdPlatform; connectionId?: string; connectionLabel?: string; from?: string; to?: string; ads?: number; rows?: number; error?: string }>;
   adsScored: number; winners: number; losers: number; fatigued: number; linked: number; at: string;
 }
 export interface AdSeriesPoint { date: string; impressions?: number; spend?: number; hookRate?: number; ctr?: number }

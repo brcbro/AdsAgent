@@ -12,3 +12,4 @@ export * from "./patterns.js";
 export * from "./suggest.js";
 export * from "./outcomes.js";
 export * from "./teardown-runner.js";
+export * from "./connections.js";

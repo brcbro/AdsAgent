@@ -47,7 +47,7 @@ pass `--all` to generate every concept.
 - `packages/remotion` — 1080×1920 composition: avatar + b-roll beats + subtitles
 - `packages/performance` — ad metrics store, CSV import (Meta / Google), scoring and winner detection
 
-Finished ads are published to `video/<session>/<adId>.mp4` (session defaults to `16th June`; set `VIDEO_OUTPUT_DIR` to write elsewhere). Operator details, safety gates, and commands: [docs/AGENT.md](docs/AGENT.md).
+Finished ads are published to `video/<session>/<adId>.mp4` (session defaults to `16th June`; set `VIDEO_OUTPUT_DIR` to write elsewhere). How the agent and the performance loop work end to end: [docs/GUIDE.md](docs/GUIDE.md). Operator details, safety gates, and commands: [docs/AGENT.md](docs/AGENT.md).
 
 ## Dashboard
 

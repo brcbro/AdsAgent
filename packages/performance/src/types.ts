@@ -10,7 +10,12 @@ export interface AdAccount {
   timezone?: string;
   status: "connected" | "csv" | "disconnected";
   lastSyncAt?: string;
+  /** The saved connection (token) this account was synced through; absent for CSV imports. */
+  connectionId?: string;
 }
+
+/** A saved platform connection; the Meta shape lives in connections.ts. Stored as a JSON doc. */
+export interface StoredConnection { id: string; platform: Platform; createdAt: string; updatedAt: string }
 
 /** One creative on a platform; stable across days. `id` is `<platform>:<external id>`. */
 export interface PlatformAd {

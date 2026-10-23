@@ -134,3 +134,41 @@ test("accepted suggestions show their measured outcome; KB briefings list, gener
   expect(api.calls.find((c) => c.path === "/api/performance/briefings" && c.method === "POST")?.body).toEqual({ count: 5 });
   expect(api.unexpected).toEqual([]);
 });
+
+test("Meta connections: the dialog lists .env and saved connections, tests a token, adds and pauses a connection", async ({ page }) => {
+  const api = await mockApi(page);
+  await page.goto("/performance");
+  const card = page.getByTestId("perf-meta-card");
+  await card.getByTestId("perf-meta-manage").click();
+  const dialog = page.getByRole("dialog", { name: "Meta ad accounts" });
+  const rows = dialog.getByTestId("meta-connection");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toContainText("From .env");
+  await expect(rows.first()).toContainText(".env");
+  await expect(rows.first().getByRole("button", { name: "Edit From .env" })).toHaveCount(0);
+  await expect(rows.nth(1)).toContainText("Client B");
+  await expect(rows.nth(1)).toContainText("Token …9f3a · accounts 456");
+
+  // Pause the saved connection.
+  await rows.nth(1).getByRole("switch", { name: "Enable Client B" }).click();
+  expect(api.calls.find((c) => c.method === "PUT" && c.path === "/api/performance/connections/meta_client_b")?.body).toEqual({ enabled: false });
+  await expect(page.getByText("Client B is paused")).toBeVisible();
+
+  // Add a new one: a bad token fails the test, a good one is saved.
+  await dialog.getByTestId("meta-add-connection").click();
+  const form = dialog.getByTestId("meta-connection-form");
+  await form.getByLabel("Name").fill("Client C");
+  await form.getByLabel("Access token").fill("bad-token");
+  await form.getByLabel("Ad account ids").fill("act_789");
+  await form.getByRole("button", { name: "Test" }).click();
+  await expect(page.getByText("Connection failed")).toBeVisible();
+  await form.getByLabel("Access token").fill("good-token-1234");
+  await form.getByRole("button", { name: "Test" }).click();
+  await expect(form).toContainText("Readable: Client B DE (456, EUR)");
+  await form.getByRole("button", { name: "Add connection" }).click();
+  expect(api.calls.find((c) => c.method === "POST" && c.path === "/api/performance/connections")?.body).toMatchObject({ label: "Client C", accessToken: "good-token-1234", accountIds: "act_789" });
+  await expect(page.getByText("Client C added")).toBeVisible();
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(2)).toContainText("Client C");
+  expect(api.unexpected).toEqual([]);
+});

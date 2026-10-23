@@ -8,6 +8,9 @@ import type { AdAccount, AdMetricsDaily, Platform, PlatformAd as PlatformAdRow }
 /** What every platform adapter (Meta, Google) provides to the shared sync. */
 export interface AdPlatformAdapter {
   platform: Platform;
+  /** Which saved connection built this adapter, for the sync report. */
+  connectionId?: string;
+  label?: string;
   listAccounts(): Promise<AdAccount[]>;
   listAds(accountId: string, seen?: string): Promise<PlatformAdRow[]>;
   fetchDailyMetrics(accountId: string, from: string, to: string): Promise<AdMetricsDaily[]>;
@@ -22,7 +25,10 @@ export const PERFORMANCE_DIR = path.join(REPO_ROOT, "data", "performance");
 export const INBOX_DIR = path.join(PERFORMANCE_DIR, "inbox");
 
 export interface FileReport { file: string; status: "imported" | "unchanged" | "error"; platform?: string; ads?: number; rows?: number; warnings?: string[]; error?: string }
-export interface AccountReport { accountId: string; name: string; status: "synced" | "error"; from?: string; to?: string; ads?: number; rows?: number; error?: string }
+export interface AccountReport {
+  accountId: string; name: string; status: "synced" | "error" | "skipped"; platform?: Platform; connectionId?: string; connectionLabel?: string;
+  from?: string; to?: string; ads?: number; rows?: number; error?: string;
+}
 export interface SyncReport {
   files: FileReport[];
   accounts: AccountReport[];
@@ -61,9 +67,13 @@ export interface SyncOptions {
   thresholds?: ScoreThresholds;
   /** Scoring window end (YYYY-MM-DD); defaults to the latest metric date so a stale export still scores. */
   until?: string;
-  /** Connected platform adapters; a missing one is simply skipped. */
+  /** Connected platform adapters, one per connection; see `metaAdapters()`. */
+  adapters?: AdPlatformAdapter[];
+  /** Single adapters, kept for callers that predate connections. */
   meta?: AdPlatformAdapter;
   google?: AdPlatformAdapter;
+  /** Accounts already synced in this run; a second connection listing the same account skips it. */
+  skipAccounts?: Set<string>;
   /** First sync of an account pulls this many days; later syncs re-pull `refreshDays` (Meta restates ~72 h). */
   backfillDays?: number;
   refreshDays?: number;
@@ -116,12 +126,19 @@ export async function syncPlatform(store: PerformanceStore, meta: AdPlatformAdap
   const today = opts.today ?? new Date().toISOString().slice(0, 10);
   const projectIds = opts.projectIds ?? knownProjectIds();
   const reports: AccountReport[] = [];
+  const tag = { platform: meta.platform, connectionId: meta.connectionId, connectionLabel: meta.label };
   let accounts;
   try { accounts = await meta.listAccounts(); } catch (e) {
-    return [{ accountId: meta.platform, name: meta.platform === "meta" ? "Meta" : "Google Ads", status: "error", error: e instanceof Error ? e.message : String(e) }];
+    const name = meta.label ?? (meta.platform === "meta" ? "Meta" : "Google Ads");
+    return [{ accountId: meta.connectionId ? `${meta.platform}:connection:${meta.connectionId}` : meta.platform, name, ...tag, status: "error", error: e instanceof Error ? e.message : String(e) }];
   }
   const known = new Map(store.accounts().map((a) => [a.id, a]));
   for (const account of accounts) {
+    if (opts.skipAccounts?.has(account.id)) {
+      reports.push({ accountId: account.id, name: account.name, ...tag, status: "skipped", error: "Already synced through another connection in this run" });
+      continue;
+    }
+    opts.skipAccounts?.add(account.id);
     const previous = known.get(account.id);
     // Meta's insights lag and restate; "yesterday" is the last complete day.
     const to = shiftDate(today, -1);
@@ -147,10 +164,10 @@ export async function syncPlatform(store: PerformanceStore, meta: AdPlatformAdap
       store.upsertMetrics(metrics);
       store.touchAdsLastSeen(metrics);
       store.upsertAccount({ ...account, lastSyncAt: new Date().toISOString() });
-      reports.push({ accountId: account.id, name: account.name, status: "synced", from, to, ads: ads.length, rows: metrics.length });
+      reports.push({ accountId: account.id, name: account.name, ...tag, status: "synced", from, to, ads: ads.length, rows: metrics.length });
     } catch (e) {
       store.upsertAccount({ ...account, lastSyncAt: previous?.lastSyncAt });
-      reports.push({ accountId: account.id, name: account.name, status: "error", from, to, error: e instanceof Error ? e.message : String(e) });
+      reports.push({ accountId: account.id, name: account.name, ...tag, status: "error", from, to, error: e instanceof Error ? e.message : String(e) });
     }
   }
   return reports;
@@ -189,8 +206,9 @@ export function syncFromInbox(store: PerformanceStore, opts: SyncOptions = {}): 
 export async function syncAll(store: PerformanceStore, opts: SyncOptions = {}): Promise<SyncReport> {
   const report = emptyReport();
   report.files = importInbox(store, opts);
-  if (opts.meta) report.accounts.push(...await syncPlatform(store, opts.meta, opts));
-  if (opts.google) report.accounts.push(...await syncPlatform(store, opts.google, opts));
+  const adapters = [...(opts.adapters ?? []), ...(opts.meta ? [opts.meta] : []), ...(opts.google ? [opts.google] : [])];
+  const run = { ...opts, skipAccounts: opts.skipAccounts ?? new Set<string>() };
+  for (const adapter of adapters) report.accounts.push(...await syncPlatform(store, adapter, run));
   Object.assign(report, rescore(store, opts));
   return report;
 }

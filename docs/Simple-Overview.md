@@ -311,6 +311,7 @@ flowchart TB
 
 ## Related docs (deeper detail)
 
+- [GUIDE.md](./GUIDE.md) — how the agent and the performance loop work, stage by stage
 - [FACTORY_FLOW.md](./FACTORY_FLOW.md) — technical factory reference
 - [HEYGEN_AVATARS.md](./HEYGEN_AVATARS.md) — avatar selection
 - [AGENT.md](./AGENT.md) — agent/dashboard integration

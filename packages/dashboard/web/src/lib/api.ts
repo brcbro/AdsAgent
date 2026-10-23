@@ -1,7 +1,8 @@
 import type {
   AgentJob, AgentSession, AgentSessionSummary, AgentState, ScriptCheck, WorkerInfo, AvatarPage, BrollClip, BrollImportResult, BrollIngestState, CaptionPreset, MusicTrack,
   Project, ProjectDraft, RenderStatus, RenderVersion, StudioConfig,
-  AdSeriesPoint, KbBriefing, PatternsResponse, PerformanceOverview, PlatformAd, ProjectPerformance, Suggestion, SuggestionKind, SyncReport, Teardown, TeardownReport,
+  AdSeriesPoint, KbBriefing, MetaConnection, MetaConnectionInput, MetaConnectionTest, PatternsResponse, PerformanceOverview, PlatformAd, ProjectPerformance,
+  Suggestion, SuggestionKind, SyncReport, Teardown, TeardownReport,
 } from "./types";
 
 export class ApiError extends Error {
@@ -96,6 +97,11 @@ export const api = {
 
   performance: () => request<PerformanceOverview>("/api/performance/overview"),
   performanceSync: () => request<SyncReport>("/api/performance/sync", { json: {} }),
+  metaConnections: () => request<{ connections: MetaConnection[] }>("/api/performance/connections"),
+  createMetaConnection: (body: MetaConnectionInput) => request<{ ok: true; connection: MetaConnection }>("/api/performance/connections", { json: body }),
+  updateMetaConnection: (id: string, body: MetaConnectionInput) => request<{ ok: true; connection: MetaConnection }>(`/api/performance/connections/${enc(id)}`, { method: "PUT", json: body }),
+  deleteMetaConnection: (id: string) => request<{ ok: true }>(`/api/performance/connections/${enc(id)}`, { method: "DELETE" }),
+  testMetaConnection: (body: MetaConnectionInput & { id?: string }) => request<MetaConnectionTest>("/api/performance/connections/test", { json: body }),
   patterns: () => request<PatternsResponse>("/api/performance/patterns"),
   suggestions: (params: { projectId?: string; kind?: SuggestionKind[]; status?: Array<"open" | "accepted" | "dismissed"> } = {}) => {
     const search = new URLSearchParams();

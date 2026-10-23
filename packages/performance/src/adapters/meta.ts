@@ -7,6 +7,9 @@ import type { AdAccount, AdMetricsDaily, PlatformAd } from "../types.js";
  */
 
 export interface MetaConfig {
+  /** Set when the adapter was built from a saved connection; reported with every account it syncs. */
+  connectionId?: string;
+  label?: string;
   accessToken: string;
   /** Ad account ids, with or without the `act_` prefix. */
   accountIds: string[];
@@ -122,6 +125,9 @@ export class MetaAdapter {
   readonly platform = "meta" as const;
   constructor(private readonly cfg: MetaConfig, private readonly fetchImpl: typeof fetch = fetch, private readonly sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))) {}
 
+  get connectionId() { return this.cfg.connectionId; }
+  get label() { return this.cfg.label; }
+
   private get base() { return `https://graph.facebook.com/${this.cfg.apiVersion}`; }
 
   private async get<T>(pathOrUrl: string, params: Record<string, string> = {}, attempt = 0): Promise<T> {
@@ -158,7 +164,7 @@ export class MetaAdapter {
     for (const raw of this.cfg.accountIds) {
       const id = actId(raw);
       const a = await this.get<{ id: string; name?: string; currency?: string; timezone_name?: string; account_status?: number }>(id, { fields: "id,name,currency,timezone_name,account_status" });
-      accounts.push({ id: `meta:${a.id.replace(/^act_/, "")}`, platform: "meta", externalId: a.id.replace(/^act_/, ""), name: a.name ?? a.id, currency: a.currency, timezone: a.timezone_name, status: "connected" });
+      accounts.push({ id: `meta:${a.id.replace(/^act_/, "")}`, platform: "meta", externalId: a.id.replace(/^act_/, ""), name: a.name ?? a.id, currency: a.currency, timezone: a.timezone_name, status: "connected", connectionId: this.cfg.connectionId });
     }
     return accounts;
   }

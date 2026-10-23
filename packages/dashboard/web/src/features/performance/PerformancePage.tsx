@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, BarChart3, FolderInput, Link2, RefreshCw, TrendingDown, Trophy } from "lucide-react";
+import { ArrowDown, ArrowUp, BarChart3, FolderInput, KeyRound, Link2, RefreshCw, TrendingDown, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import { api, errorMessage } from "@/lib/api";
 import { cn, relativeTime } from "@/lib/format";
@@ -9,7 +9,8 @@ import { keys, useAdSeries, usePerformance, useTeardown } from "@/lib/queries";
 import { PatternsSection } from "./PatternsSection";
 import { SuggestionsSection } from "./SuggestionsSection";
 import { BriefingsSection } from "./BriefingsSection";
-import type { AdPlatform, LeaderboardRow, NormalizationReport, PerformanceOverview, Teardown } from "@/lib/types";
+import { MetaConnectionsDialog } from "./MetaConnectionsDialog";
+import type { AdPlatform, LeaderboardRow, NormalizationReport, PerformanceOverview, SyncReport, Teardown } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Badge, EmptyState, Segmented, Select, Skeleton, Switch } from "@/components/ui/primitives";
@@ -58,8 +59,9 @@ export default function PerformancePage() {
       const warnings = imported.flatMap((f) => (f.warnings ?? []).map((w) => `${f.file}: ${w}`));
       const summary = `${report.adsScored} ads scored · ${report.winners} winners · ${report.losers} losers${warnings.length ? `\n${warnings.join("\n")}` : ""}`;
       if (errors.length) toast.error(`${errors.length} file${errors.length > 1 ? "s" : ""} could not be imported`, { description: errors.map((f) => `${f.file}: ${f.error}`).join("\n") });
-      if (accountErrors.length) toast.error(`Meta sync failed for ${accountErrors.map((a) => a.name).join(", ")}`, { description: accountErrors.map((a) => a.error).join("\n") });
-      if (synced.length) toast.success(`Meta: ${synced.map((a) => `${a.name} ${a.from} → ${a.to}`).join(", ")}`, { description: summary });
+      const who = (a: SyncReport["accounts"][number]) => `${a.connectionLabel ? `${a.connectionLabel} · ` : ""}${a.name}`;
+      if (accountErrors.length) toast.error(`Sync failed for ${accountErrors.map(who).join(", ")}`, { description: accountErrors.map((a) => a.error).join("\n") });
+      if (synced.length) toast.success(`Synced ${synced.map((a) => `${who(a)} ${a.from} → ${a.to}`).join(", ")}`, { description: summary });
       else if (imported.length) toast.success(`${imported.length} file${imported.length > 1 ? "s" : ""} imported`, { description: summary });
       else if (!errors.length && !accountErrors.length) toast.info(report.adsScored ? `Nothing new. ${report.adsScored} ads re-scored.` : "No CSV files in the inbox and no Meta account configured.");
     } catch (err) { toast.error("Sync failed", { description: errorMessage(err) }); }
@@ -138,10 +140,13 @@ function Sources({ data }: { data: PerformanceOverview }) {
   const client = useQueryClient();
   const byPlatform = (p: AdPlatform) => data.accounts.filter((a) => a.platform === p);
   const lastImport = data.imports[0];
+  const [manageMeta, setManageMeta] = useState(false);
   const metaAccounts = byPlatform("meta");
   const metaConnected = metaAccounts.filter((a) => a.status === "connected");
   const metaErrors = (data.lastReport?.accounts ?? []).filter((a) => a.status === "error" && a.accountId.startsWith("meta"));
   const lastMetaSync = metaConnected.map((a) => a.lastSyncAt).filter(Boolean).sort().at(-1);
+  const metaEnabled = data.meta.connections.filter((c) => c.enabled);
+  const metaLabel = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
   const google = byPlatform("google");
   const googleConnected = google.filter((a) => a.status === "connected");
   const googleErrors = (data.lastReport?.accounts ?? []).filter((a) => a.status === "error" && a.accountId.startsWith("google"));
@@ -162,21 +167,27 @@ function Sources({ data }: { data: PerformanceOverview }) {
         detail={<><span className="font-mono text-xs">{data.inbox.dir}/</span>{lastImport ? ` · last import ${relativeTime(lastImport.importedAt)}` : ""}</>} />
       <SourceCard icon={<BarChart3 />} title="Meta Ads" data-testid="perf-meta-card"
         tone={metaErrors.length ? "danger" : metaConnected.length ? "success" : metaAccounts.length ? "info" : data.meta.configured ? "warning" : "neutral"}
-        status={metaErrors.length ? "Sync error" : metaConnected.length ? `${metaConnected.length} account${metaConnected.length > 1 ? "s" : ""} connected` : data.meta.configured ? "Configured · not synced yet" : metaAccounts.length ? `${metaAccounts.length} account${metaAccounts.length > 1 ? "s" : ""} via CSV` : "Not connected"}
-        detail={metaErrors.length ? metaErrors.map((a) => `${a.name}: ${a.error}`).join(" · ")
-          : metaConnected.length ? `${metaConnected.map((a) => a.name).join(", ")}${lastMetaSync ? ` · synced ${relativeTime(lastMetaSync)}` : ""}`
-          : data.meta.configured ? `Accounts ${data.meta.accountIds.join(", ")} · click Sync now to backfill 90 days`
+        status={metaErrors.length ? "Sync error" : metaConnected.length ? `${metaLabel(metaConnected.length, "account")} connected` : data.meta.configured ? "Configured · not synced yet" : metaAccounts.length ? `${metaLabel(metaAccounts.length, "account")} via CSV` : "Not connected"}
+        detail={metaErrors.length ? metaErrors.map((a) => `${a.connectionLabel ? `${a.connectionLabel} · ` : ""}${a.name}: ${a.error}`).join(" · ")
+          : metaConnected.length ? `${metaEnabled.length > 1 ? `${metaLabel(metaEnabled.length, "connection")} · ` : ""}${metaConnected.map((a) => a.name).join(", ")}${lastMetaSync ? ` · synced ${relativeTime(lastMetaSync)}` : ""}`
+          : data.meta.configured ? `${metaEnabled.map((c) => c.label).join(", ")} · accounts ${data.meta.accountIds.join(", ")} · click Sync now to backfill 90 days`
           : metaAccounts.length ? metaAccounts.map((a) => a.name).join(", ")
-          : "Set META_ACCESS_TOKEN and META_AD_ACCOUNT_IDS in .env, or use CSV exports."}
-        footer={data.meta.configured && (
-          <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-2">
-            <span className="text-xs text-fg-muted">
-              Nightly sync after {String(data.nightly.hour).padStart(2, "0")}:00
-              {data.nightly.lastRun ? ` · last ${data.nightly.lastRun}${data.nightly.lastResult && data.nightly.lastResult !== "ok" ? " (failed)" : ""}` : ""}
-            </span>
-            <Switch id="perf-nightly" label="Nightly sync" checked={data.nightly.enabled} onCheckedChange={toggleNightly} />
+          : "Add a connection (token + ad accounts) per business, or use CSV exports."}
+        footer={
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-2">
+            <Button variant="ghost" size="sm" onClick={() => setManageMeta(true)} data-testid="perf-meta-manage"><KeyRound /> {data.meta.connections.length ? `Manage ${metaLabel(data.meta.connections.length, "connection")}` : "Add connection"}</Button>
+            {data.meta.configured && (
+              <span className="flex items-center gap-2 text-xs text-fg-muted">
+                <span>
+                  Nightly sync after {String(data.nightly.hour).padStart(2, "0")}:00
+                  {data.nightly.lastRun ? ` · last ${data.nightly.lastRun}${data.nightly.lastResult && data.nightly.lastResult !== "ok" ? " (failed)" : ""}` : ""}
+                </span>
+                <Switch id="perf-nightly" label="Nightly sync" checked={data.nightly.enabled} onCheckedChange={toggleNightly} />
+              </span>
+            )}
           </div>
-        )} />
+        } />
+      {manageMeta && <MetaConnectionsDialog open onOpenChange={(o) => { if (!o) setManageMeta(false); }} data={data} />}
       <SourceCard icon={<BarChart3 />} title="Google Ads" data-testid="perf-google-card"
         tone={googleErrors.length ? "danger" : googleConnected.length ? "success" : google.length ? "info" : data.google.configured ? "warning" : "neutral"}
         status={googleErrors.length ? "Sync error" : googleConnected.length ? `${googleConnected.length} account${googleConnected.length > 1 ? "s" : ""} connected` : data.google.configured ? "Configured · not synced yet" : google.length ? `${google.length} account${google.length > 1 ? "s" : ""} via CSV` : "Not connected"}

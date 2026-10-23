@@ -5,7 +5,7 @@ import { REPO_ROOT } from "@ai-ads/core";
 import type { Pattern } from "./patterns.js";
 import type { Suggestion, SuggestionKind, SuggestionStatus } from "./suggest.js";
 import type { Teardown } from "./teardown.js";
-import type { AdAccount, AdMetricsDaily, AdScore, AdWindowTotals, Platform, PlatformAd } from "./types.js";
+import type { AdAccount, AdMetricsDaily, AdScore, AdWindowTotals, Platform, PlatformAd, StoredConnection } from "./types.js";
 
 /** Shares the agent queue database so one file holds everything the dashboard learns. */
 export const PERFORMANCE_DB_PATH = path.join(REPO_ROOT, "data", "agent-queue", "agent.sqlite");
@@ -44,9 +44,31 @@ export class PerformanceStore {
       CREATE TABLE IF NOT EXISTS suggestions(id TEXT PRIMARY KEY, project_id TEXT, session_id TEXT, kind TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'open', doc TEXT NOT NULL, created_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS perf_imports(file TEXT PRIMARY KEY, hash TEXT NOT NULL, platform TEXT, rows INTEGER, imported_at TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS perf_settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
+      CREATE TABLE IF NOT EXISTS perf_settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS perf_connections(id TEXT PRIMARY KEY, platform TEXT NOT NULL, doc TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);`);
+    // Added after the first release: which connection synced an account.
+    try { this.db.exec("ALTER TABLE ad_accounts ADD COLUMN connection_id TEXT"); } catch { /* column exists */ }
   }
   close() { this.db.close(); }
+
+  /** Saved platform connections (tokens included; redact before sending to a browser). */
+  connections(): StoredConnection[] {
+    return this.db.prepare("SELECT doc FROM perf_connections ORDER BY created_at").all().map((r) => JSON.parse(String(r.doc)));
+  }
+  connection(id: string): StoredConnection | undefined {
+    const r = this.db.prepare("SELECT doc FROM perf_connections WHERE id=?").get(id);
+    return r ? JSON.parse(String(r.doc)) : undefined;
+  }
+  saveConnection(c: StoredConnection) {
+    this.db.prepare("INSERT INTO perf_connections(id,platform,doc,created_at,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET doc=excluded.doc, updated_at=excluded.updated_at")
+      .run(c.id, c.platform, JSON.stringify(c), c.createdAt, c.updatedAt);
+  }
+  /** Removes the connection; its accounts, ads and metrics stay so the history is not lost. */
+  deleteConnection(id: string): boolean {
+    const changes = this.db.prepare("DELETE FROM perf_connections WHERE id=?").run(id).changes;
+    if (changes) this.db.prepare("UPDATE ad_accounts SET status='disconnected', connection_id=NULL WHERE connection_id=?").run(id);
+    return !!changes;
+  }
 
   setting(key: string): string | undefined;
   setting(key: string, fallback: string): string;
@@ -174,16 +196,18 @@ export class PerformanceStore {
   }
 
   upsertAccount(a: AdAccount) {
-    this.db.prepare(`INSERT INTO ad_accounts(id,platform,external_id,name,currency,timezone,status,last_sync_at) VALUES(?,?,?,?,?,?,?,?)
+    this.db.prepare(`INSERT INTO ad_accounts(id,platform,external_id,name,currency,timezone,status,last_sync_at,connection_id) VALUES(?,?,?,?,?,?,?,?,?)
       ON CONFLICT(id) DO UPDATE SET name=excluded.name, status=excluded.status, last_sync_at=COALESCE(excluded.last_sync_at, ad_accounts.last_sync_at),
-      currency=COALESCE(excluded.currency, ad_accounts.currency), timezone=COALESCE(excluded.timezone, ad_accounts.timezone)`)
-      .run(a.id, a.platform, a.externalId, a.name, a.currency ?? null, a.timezone ?? null, a.status, a.lastSyncAt ?? null);
+      currency=COALESCE(excluded.currency, ad_accounts.currency), timezone=COALESCE(excluded.timezone, ad_accounts.timezone),
+      connection_id=COALESCE(excluded.connection_id, ad_accounts.connection_id)`)
+      .run(a.id, a.platform, a.externalId, a.name, a.currency ?? null, a.timezone ?? null, a.status, a.lastSyncAt ?? null, a.connectionId ?? null);
   }
   accounts(): AdAccount[] {
     return this.db.prepare("SELECT * FROM ad_accounts ORDER BY platform, name").all().map((r) => ({
       id: String(r.id), platform: r.platform as Platform, externalId: String(r.external_id), name: String(r.name),
       currency: r.currency ? String(r.currency) : undefined, timezone: r.timezone ? String(r.timezone) : undefined,
       status: r.status as AdAccount["status"], lastSyncAt: r.last_sync_at ? String(r.last_sync_at) : undefined,
+      connectionId: r.connection_id ? String(r.connection_id) : undefined,
     }));
   }
 

@@ -3,9 +3,10 @@ import path from "node:path";
 import type express from "express";
 import { ADS_DIR, REPO_ROOT } from "@ai-ads/core";
 import {
-  COMPETITORS_DIR, CREATIVES_DIR, GoogleAdsAdapter, INBOX_DIR, MetaAdapter, PerformanceStore, googleConfigFromEnv, loadKbForPrompt, metaConfigFromEnv,
-  evaluateOutcomes, normalizationReport, projectSuggestionsFor, refreshSuggestions, runTeardowns, snapshotFor, startNightlySync, syncAll, winningHooks,
-  type AdScore, type PlatformAd, type SuggestionKind, type SyncReport, type TeardownReport,
+  COMPETITORS_DIR, CREATIVES_DIR, ENV_CONNECTION_ID, GoogleAdsAdapter, INBOX_DIR, MetaAdapter, PerformanceStore, googleConfigFromEnv, loadKbForPrompt,
+  evaluateOutcomes, metaAdapters, metaConfigFor, metaConnections, normalizationReport, normalizeConnectionInput, projectSuggestionsFor, redactConnection,
+  refreshSuggestions, runTeardowns, snapshotFor, startNightlySync, syncAll, winningHooks,
+  type AdScore, type MetaConnectionInput, type PlatformAd, type SuggestionKind, type SyncReport, type TeardownReport,
 } from "@ai-ads/performance";
 import { generateAndSaveBriefings, listKbBriefings } from "../../../pipeline/src/briefings-from-kb.js";
 import { llmConfigured, teardownDeps } from "../teardown-deps.js";
@@ -41,8 +42,8 @@ function countTeardowns(store: PerformanceStore) {
 /** Ad performance: CSV inbox + Meta Marketing API sync (manual and nightly), leaderboard, manual project links, teardowns and the patterns KB. */
 export function registerPerformanceRoutes(app: express.Express): { close: () => void } {
   const store = new PerformanceStore();
-  const metaConfig = metaConfigFromEnv();
-  const meta = metaConfig ? new MetaAdapter(metaConfig) : undefined;
+  // Meta connections are read on every sync, so one added in the dashboard is picked up without a restart.
+  const connections = () => metaConnections(store);
   const googleConfig = googleConfigFromEnv();
   const google = googleConfig ? new GoogleAdsAdapter(googleConfig) : undefined;
   let current: Promise<SyncReport> | undefined;
@@ -59,7 +60,7 @@ export function registerPerformanceRoutes(app: express.Express): { close: () => 
   };
   const runSync = () => {
     if (current) return current;
-    current = syncAll(store, { meta, google }).then((r) => {
+    current = syncAll(store, { adapters: metaAdapters(store), google }).then((r) => {
       lastReport = r;
       // Teardowns spend LLM credits, so they run after the sync response and only when a provider key exists.
       if (store.setting("teardownAuto", "1") === "1" && llmConfigured()) void runTeardown().catch(() => {});
@@ -68,6 +69,58 @@ export function registerPerformanceRoutes(app: express.Express): { close: () => 
     return current;
   };
   const nightly = startNightlySync(store, runSync);
+  const metaOverview = () => {
+    const all = connections();
+    const enabled = all.filter((c) => c.enabled);
+    return {
+      configured: enabled.length > 0,
+      connections: all.map(redactConnection),
+      accountIds: [...new Set(enabled.flatMap((c) => c.accountIds))],
+      apiVersion: enabled[0] ? metaConfigFor(enabled[0]).apiVersion : undefined,
+      conversionActions: enabled[0] ? metaConfigFor(enabled[0]).conversionActions : [],
+    };
+  };
+
+  /* ---- Meta connections: one token + its ad accounts per business, managed from the dashboard ---- */
+  app.get("/api/performance/connections", (_req, res) => { res.json({ connections: connections().map(redactConnection) }); });
+
+  app.post("/api/performance/connections", (req, res) => {
+    try {
+      const c = normalizeConnectionInput((req.body ?? {}) as MetaConnectionInput);
+      store.saveConnection(c);
+      res.json({ ok: true, connection: redactConnection(c) });
+    } catch (err) { res.status(400).json({ error: err instanceof Error ? err.message : String(err) }); }
+  });
+
+  app.put("/api/performance/connections/:id", (req, res) => {
+    const id = req.params.id;
+    if (id === ENV_CONNECTION_ID) { res.status(400).json({ error: "This connection comes from .env; edit the file and restart the dashboard" }); return; }
+    const existing = connections().find((c) => c.id === id);
+    if (!existing) { res.status(404).json({ error: "Connection not found" }); return; }
+    try {
+      const c = normalizeConnectionInput((req.body ?? {}) as MetaConnectionInput, existing);
+      store.saveConnection(c);
+      res.json({ ok: true, connection: redactConnection(c) });
+    } catch (err) { res.status(400).json({ error: err instanceof Error ? err.message : String(err) }); }
+  });
+
+  app.delete("/api/performance/connections/:id", (req, res) => {
+    const id = req.params.id;
+    if (id === ENV_CONNECTION_ID) { res.status(400).json({ error: "Remove META_ACCESS_TOKEN from .env to drop this connection" }); return; }
+    if (!store.deleteConnection(id)) { res.status(404).json({ error: "Connection not found" }); return; }
+    res.json({ ok: true });
+  });
+
+  /** Lists the ad accounts a token can read. Body: the form values; `id` alone (or with a blank token) tests the saved token. */
+  app.post("/api/performance/connections/test", async (req, res) => {
+    const body = (req.body ?? {}) as MetaConnectionInput & { id?: string };
+    const existing = body.id ? connections().find((c) => c.id === body.id) : undefined;
+    try {
+      const c = normalizeConnectionInput({ ...body, label: body.label || existing?.label || "Test" }, existing);
+      const accounts = await new MetaAdapter(metaConfigFor(c)).listAccounts();
+      res.json({ ok: true, accounts: accounts.map((a) => ({ id: a.externalId, name: a.name, currency: a.currency, timezone: a.timezone })) });
+    } catch (err) { res.status(400).json({ error: err instanceof Error ? err.message : String(err) }); }
+  });
 
   app.get("/api/performance/overview", (_req, res) => {
     const titles = projectTitles();
@@ -86,12 +139,7 @@ export function registerPerformanceRoutes(app: express.Express): { close: () => 
       latestMetricDate: store.latestMetricDate(),
       projects: [...titles.entries()].map(([id, title]) => ({ id, title })),
       syncing: !!current,
-      meta: {
-        configured: !!metaConfig,
-        accountIds: metaConfig?.accountIds ?? [],
-        apiVersion: metaConfig?.apiVersion,
-        conversionActions: metaConfig?.conversionActions ?? [],
-      },
+      meta: metaOverview(),
       google: {
         configured: !!googleConfig,
         customerIds: googleConfig?.customerIds ?? [],

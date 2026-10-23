@@ -62,7 +62,10 @@ export function fixtures() {
   ];
   const ingest = { running: false, total: 3, done: 3, errors: [] as unknown[], lastRunAt: iso(3), lastResult: "1 classified, 2 catalogued, 0 failed",
     log: [], categories: ["Trading", "Lifestyle", "Deep Work", "Community"], threshold: 0.7, inboxDir: "E:/data/broll/inbox" };
-  return { projects, versions, agent, broll, ingest };
+  const metaConnections: Array<Record<string, unknown>> = [
+    { id: "meta_client_b", platform: "meta", label: "Client B", accountIds: ["456"], enabled: true, source: "dashboard", tokenHint: "…9f3a", createdAt: iso(600), updatedAt: iso(600) },
+  ];
+  return { projects, versions, agent, broll, ingest, metaConnections };
 }
 
 export interface ApiCall { method: string; path: string; body: unknown }
@@ -176,7 +179,10 @@ export async function mockApi(page: Page) {
         imports: [{ file: "meta-october.csv", platform: "meta", rows: 90, importedAt: "2026-10-30T08:00:00Z" }],
         inbox: { dir: "data/performance/inbox", files: ["meta-october.csv"] }, latestMetricDate: "2026-10-30",
         projects: [{ id: "proj_1", title: "Workday planning" }], syncing: false,
-        meta: { configured: true, accountIds: ["123"], apiVersion: "v21.0", conversionActions: ["purchase"] },
+        meta: { configured: true, accountIds: ["123", "456"], apiVersion: "v21.0", conversionActions: ["purchase"], connections: [
+          { id: "env", platform: "meta", label: "From .env", accountIds: ["123"], apiVersion: "v21.0", enabled: true, source: "env", tokenHint: "…abcd", createdAt: "", updatedAt: "" },
+          ...data.metaConnections,
+        ] },
         google: { configured: true, customerIds: ["1234567890"], apiVersion: "v19", loginCustomerId: "9999999999" },
         normalization: { balanced: true, notes: ["Scores are ranked within each platform and account; compare percentiles and flags across platforms, never raw hook rates."], platforms: [
           { platform: "meta", accounts: 1, ads: 3, eligible: 2, winners: 1, losers: 1, fatigued: 0, spend: 1204, meanHookRate: 0.247, meanHoldRate: 0.3, meanCtr: 0.015, meanCpa: 30, meanPercentile: 0.5, hookRateNote: "3-second plays ÷ impressions", holdRateNote: "ThruPlays ÷ 3-second plays" },
@@ -246,6 +252,28 @@ export async function mockApi(page: Page) {
     }
     if (method === "GET" && path === "/api/performance/projects") return json({ proj_ready: { ads: 2, winners: 1, fatigued: 0, spend: 1234.5, impressions: 80_000, bestHookRate: 0.38, bestCtr: 0.021, bestVariantKey: "h1_c1_9x16" } });
     if (method === "POST" && path === "/api/performance/settings") return json({ ok: true, nightlyEnabled: (body as { nightlyEnabled?: boolean }).nightlyEnabled ?? true });
+    if (method === "GET" && path === "/api/performance/connections") return json({ connections: data.metaConnections });
+    if (method === "POST" && path === "/api/performance/connections") {
+      const b = body as { label: string; accountIds: string; accessToken?: string };
+      const c = { id: `meta_${data.metaConnections.length + 1}`, platform: "meta", label: b.label, accountIds: b.accountIds.split(/[,\s]+/).filter(Boolean).map((x) => x.replace(/^act_/, "")), enabled: true, source: "dashboard", tokenHint: `…${(b.accessToken ?? "").slice(-4)}`, createdAt: iso(0), updatedAt: iso(0) };
+      data.metaConnections.push(c);
+      return json({ ok: true, connection: c });
+    }
+    if (method === "POST" && path === "/api/performance/connections/test") {
+      const b = body as { accessToken?: string; id?: string };
+      if (b.accessToken === "bad-token") return json({ error: "Meta API: Invalid OAuth access token (code 190)" }, 400);
+      return json({ ok: true, accounts: [{ id: "456", name: "Client B DE", currency: "EUR" }] });
+    }
+    if (method === "PUT" && (m = path.match(/^\/api\/performance\/connections\/([^/]+)$/))) {
+      const c = data.metaConnections.find((x) => x.id === m![1]);
+      if (!c) return json({ error: "Connection not found" }, 404);
+      Object.assign(c, body as Record<string, unknown>);
+      return json({ ok: true, connection: c });
+    }
+    if (method === "DELETE" && (m = path.match(/^\/api\/performance\/connections\/([^/]+)$/))) {
+      data.metaConnections.splice(data.metaConnections.findIndex((x) => x.id === m![1]), 1);
+      return json({ ok: true });
+    }
     if (method === "POST" && path === "/api/performance/sync") return json({ files: [{ file: "meta-october.csv", status: "unchanged" }], accounts: [], adsScored: 3, winners: 1, losers: 1, fatigued: 0, linked: 1, at: "2026-10-30T09:00:00Z" });
     if (method === "POST" && (m = path.match(/^\/api\/performance\/ads\/([^/]+)\/link$/))) return json({ ok: true, ad: { id: m[1], projectId: (body as { projectId?: string }).projectId } });
 

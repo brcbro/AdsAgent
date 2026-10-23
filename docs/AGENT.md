@@ -75,6 +75,15 @@ Clips live in `data/broll/clips/<Category>/` (Trading, Lifestyle, Deep Work, Com
 - **Review.** The **Needs review** chip lists flagged clips with the classifier's confidence; pick the right category on the card or in the preview dialog to confirm. Any clip's category can be corrected from its preview dialog. Flagged clips are still available to the agent under their suggested category until corrected.
 - **Manual runs.** **Classify unclassified** in the Library, or `pnpm broll-classify` from a terminal, processes the inbox, new files in category folders and leftover "Other" entries. `pnpm broll-catalog` still rebuilds the whole catalog (keeping classifier and human decisions).
 
+## Performance loop
+
+The Performance page pulls ad results back in, scores every ad, and feeds what wins into the next script. Details and the end-to-end picture: [GUIDE.md](./GUIDE.md).
+
+- **Meta connections.** Performance → Meta Ads → **Manage connections**. One connection per Business Manager or client: a name, a system-user access token with `ads_read`, and the ad account ids it may read (with or without `act_`). **Test** lists the accounts the token can see before you save. Every enabled connection is pulled by **Sync now** and by the nightly sync; a paused one is skipped but keeps its history. Tokens are stored in `data/agent-queue/agent.sqlite` and only their last four characters are ever shown again. The legacy `META_ACCESS_TOKEN` / `META_AD_ACCOUNT_IDS` pair in `.env` appears as a read-only connection called "From .env".
+- **Same account in two connections.** It is synced once per run through the first connection that lists it; the second reports it as skipped.
+- **Google Ads** still comes from `.env` (`GOOGLE_ADS_*`), one set of credentials with several customer ids.
+- **CSV inbox.** Without any API, export daily ad reports into `data/performance/inbox/` and click Sync now.
+
 ## Music
 
 Default track: `data/music/funk-bed.mp3`. Manage the catalog in `packages/core/src/musicTracks.ts`. The ffmpeg renderer normalises the bed and ducks it under the voice.
