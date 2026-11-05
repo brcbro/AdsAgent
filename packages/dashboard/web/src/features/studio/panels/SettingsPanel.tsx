@@ -30,7 +30,6 @@ export function SettingsPanel() {
   const perf = useProjectPerformance().data?.[project.id];
   const suggestions = useSuggestions({ projectId: project.id }, !!perf).data?.suggestions ?? [];
   const d = draft.draft!;
-  const isLocal = project.id.startsWith("local_");
 
   return (
     <>
@@ -60,19 +59,7 @@ export function SettingsPanel() {
           defaultValue={1}
           hint="Baked into the exported MP4 on the next render or Apply edits. The player's speed menu only changes preview playback."
         />
-        <RangeField
-          label="Avatar on screen"
-          value={d.introMs ?? 7000}
-          onChange={(v) => draft.update({ introMs: v })}
-          min={3000}
-          max={10000}
-          step={500}
-          scale={0.001}
-          unit="s"
-          defaultValue={7000}
-          format={(v) => `${(v / 1000).toFixed(1)} s`}
-          hint={isLocal ? "Local previews always use a 3-second waveform intro." : "How long the presenter stays full-screen before B-roll starts."}
-        />
+        <p className="text-xs text-fg-muted">The presenter is on screen for the hook, then B-roll plays for the body. Edit both under Hook and B-roll in the Script tab.</p>
       </Section>
 
       <Section title="Ad performance"

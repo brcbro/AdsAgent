@@ -82,6 +82,9 @@ test("sending a brief while a script awaits review asks before replacing it", as
   const api = await mockApi(page);
   await page.goto("/agent/chat_2");
   await page.getByLabel("Brief for the agent").fill("Anderes Thema");
+  // No local preview mode; the voice follows the presenter (its own voice, ElevenLabs V4).
+  await expect(page.getByRole("radio", { name: "Local preview" })).toHaveCount(0);
+  await expect(page.getByTestId("presenter-voice")).toContainText("Anna (avatar's own) · ElevenLabs V4");
   await page.getByRole("button", { name: "Send brief" }).click();
   const dialog = page.getByRole("alertdialog");
   await expect(dialog).toContainText("Replace the script awaiting review?");

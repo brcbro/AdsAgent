@@ -27,6 +27,11 @@ export const AvatarConfig = z.object({
   name: z.string().optional(),
   previewImageUrl: z.string().optional(),
   gender: z.enum(["male", "female"]).optional(),
+  /** "private" = one of the user's own HeyGen avatars, "public" = the HeyGen library. */
+  ownership: z.enum(["public", "private"]).optional(),
+  /** HeyGen voice that speaks the whole script (own or HeyGen library voice). */
+  voiceId: z.string().optional(),
+  voiceName: z.string().optional(),
 });
 export type AvatarConfig = z.infer<typeof AvatarConfig>;
 
@@ -35,6 +40,11 @@ export const ProjectMetadata = z.object({
   title: z.string(),
   scriptDe: z.string(),
   introMs: z.number().min(3000).max(10000).default(6000),
+  /**
+   * How long the presenter stays on screen before B-roll takes over.
+   * "hook": until the end of the script's first sentence (timed from the real voice); "custom": introMs.
+   */
+  avatarUntil: z.enum(["hook", "custom"]).optional(),
   avatarZoom: z.number().min(1).max(2.5).default(1),
   aspectRatio: z.enum(["9:16", "16:9"]).default("16:9"),
   /** Baked into final MP4 via ffmpeg (e.g. 1.2 = 20% faster). */

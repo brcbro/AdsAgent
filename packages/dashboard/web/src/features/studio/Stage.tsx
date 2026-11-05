@@ -116,11 +116,8 @@ function StageBody() {
       className="m-auto"
       icon={<Wand2 />}
       title="Ready when you are"
-      description="Write or paste your German script, choose captions and music, then create a local preview. Pick a HeyGen avatar if you want a presenter on screen."
-      action={<>
-        <Button variant="primary" disabled={!!actions.reasons.local} onClick={() => actions.run("local")}>{ACTION_COPY.local.label}</Button>
-        <Button variant="on-dark" className="border border-white/15" onClick={() => document.getElementById("avatar-change")?.click()}><UserRound /> Choose avatar</Button>
-      </>}
+      description="Write or paste your German script, then choose a HeyGen presenter — your own or from the HeyGen library. Its own voice is used automatically. The presenter delivers the hook; B-roll, captions and music carry the rest."
+      action={<Button variant="primary" onClick={() => document.getElementById("avatar-change")?.click()}><UserRound /> Choose a presenter</Button>}
     />
   );
 }

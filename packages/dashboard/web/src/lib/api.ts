@@ -1,5 +1,5 @@
 import type {
-  AgentJob, AgentSession, AgentSessionSummary, AgentState, ScriptCheck, WorkerInfo, AvatarPage, BrollClip, BrollImportResult, BrollIngestState, CaptionPreset, MusicTrack,
+  AgentJob, AgentSession, AgentSessionSummary, AgentState, ScriptCheck, WorkerInfo, AvatarPage, AvatarVoice, HeyGenVoice, BrollClip, BrollImportResult, BrollIngestState, CaptionPreset, MusicTrack,
   Project, ProjectDraft, RenderStatus, RenderVersion, StudioConfig,
   AdSeriesPoint, KbBriefing, MetaConnection, MetaConnectionInput, MetaConnectionTest, PatternsResponse, PerformanceOverview, PlatformAd, ProjectPerformance,
   Suggestion, SuggestionKind, SyncReport, Teardown, TeardownReport,
@@ -50,8 +50,6 @@ export const api = {
     request<{ project: Project; scriptChanged: boolean }>(`/api/projects/${enc(id)}/versions/${enc(versionId)}/restore`, { json: {} }),
   archiveProject: (id: string) => request<{ ok: true; archivedTo: string }>(`/api/projects/${enc(id)}/archive`, { json: {} }),
 
-  localPreview: (id: string, meta: Project) =>
-    request<{ ok: true; id: string; project: Project }>(`/api/projects/${enc(id)}/local-preview`, { json: meta }),
   sendAvatar: (id: string, meta: Project) => request<{ ok: true }>(`/api/projects/${enc(id)}/send`, { json: meta }),
   applyEdits: (id: string, meta: Project) => request<{ ok: true }>(`/api/projects/${enc(id)}/recaption`, { json: meta }),
   cancelRender: (projectId: string) => request<{ ok: true }>("/api/render/cancel", { json: { projectId } }),
@@ -85,12 +83,20 @@ export const api = {
       xhr.send(file);
     }),
   studioConfig: () => request<StudioConfig>("/api/studio-config"),
-  avatars: (params: { page: number; q?: string; portrait?: boolean; gender?: string }) => {
+  avatars: (params: { page: number; q?: string; portrait?: boolean; gender?: string; ownership?: "public" | "private" }) => {
     const search = new URLSearchParams({ page: String(params.page) });
+    if (params.ownership) search.set("ownership", params.ownership);
     if (params.q) search.set("q", params.q);
     if (params.portrait) search.set("portrait", "1");
     if (params.gender) search.set("gender", params.gender);
     return request<AvatarPage>(`/api/avatars?${search}`);
+  },
+  avatarVoice: (avatarId: string) => request<AvatarVoice>(`/api/heygen/avatars/${enc(avatarId)}/voice`),
+  heygenVoices: (params: { type: "public" | "private"; language?: string; fresh?: boolean }) => {
+    const search = new URLSearchParams({ type: params.type });
+    if (params.language) search.set("language", params.language);
+    if (params.fresh) search.set("fresh", "1");
+    return request<{ voices: HeyGenVoice[]; total: number; type: "public" | "private"; language: string | null }>(`/api/heygen/voices?${search}`);
   },
 
   agentState: () => request<AgentState>("/api/agent/state"),
@@ -122,7 +128,7 @@ export const api = {
   projectPerformance: () => request<Record<string, ProjectPerformance>>("/api/performance/projects"),
   adSeries: (adId: string) => request<{ ad: PlatformAd; series: AdSeriesPoint[] }>(`/api/performance/ads/${enc(adId)}/series`),
   linkAd: (adId: string, projectId: string | null) => request<{ ok: true; ad: PlatformAd }>(`/api/performance/ads/${enc(adId)}/link`, { json: { projectId } }),
-  refreshAvatars: () => request<{ total: number; defaultRepaired: boolean; defaultAvatarId: string }>("/api/avatars/refresh", { json: {} }),
+  refreshAvatars: () => request<{ total: number; privateCount: number; privateError?: string; defaultRepaired: boolean; defaultAvatarId: string }>("/api/avatars/refresh", { json: {} }),
   agentSession: (id: string) => request<AgentSession>(`/api/agent/sessions/${enc(id)}`),
   archivedSessions: () => request<AgentSessionSummary[]>("/api/agent/sessions?archived=1"),
   searchSessions: (q: string) => request<{ ids: string[] }>(`/api/agent/sessions?q=${enc(q)}`),
@@ -139,7 +145,7 @@ export const api = {
   newSession: () => request<AgentSession>("/api/agent/sessions", { json: {} }),
   renameSession: (id: string, title: string) => request<AgentSession>(`/api/agent/sessions/${enc(id)}/rename`, { json: { title } }),
   archiveSession: (id: string) => request<AgentSession>(`/api/agent/sessions/${enc(id)}/archive`, { json: {} }),
-  sendBrief: (sessionId: string, body: { message: string; targetSeconds: number; autoProduce: boolean; productionMode?: "local" | "heygen"; avatarId?: string }) =>
+  sendBrief: (sessionId: string, body: { message: string; targetSeconds: number; autoProduce: boolean; productionMode?: "heygen"; avatarId?: string; voiceId?: string; voiceName?: string }) =>
     request<AgentJob>(`/api/agent/sessions/${enc(sessionId)}/messages`, { json: body }),
   jobAction: (jobId: string, action: "approve" | "retry" | "cancel" | "reject" | "reopen", body: Record<string, unknown> = {}) =>
     request<AgentJob>(`/api/agent/jobs/${enc(jobId)}/${action}`, { json: body }),

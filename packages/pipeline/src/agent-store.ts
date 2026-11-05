@@ -23,6 +23,8 @@ export interface AgentJob {
   id: string; sessionId: string; projectId: string; brief: string; targetSeconds: number; autoProduce: boolean;
   status: JobStatus; stage: "script" | "voice" | "avatar" | "render" | "quality" | "complete";
   productionMode?: "local" | "heygen"; avatarId?: string; avatarName?: string;
+  /** HeyGen voice for the presenter (own or HeyGen library voice). */
+  voiceId?: string; voiceName?: string;
   createdAt: string; updatedAt: string; attempts: number; scriptDe?: string; title?: string; reply?: string;
   visualPlan?: string[]; quality?: QualityReport; error?: string; allowVoiceRetry?: boolean;
   /** A project folder exists under data/ads once narration starts, so the Studio can open it even if the render stopped. */
@@ -172,7 +174,7 @@ export class AgentStore {
    * new brief, so a chat never carries two pending reviews; a queued or running job still blocks.
    */
   enqueue(sessionId: string, brief: string, targetSeconds: number, autoProduce: boolean,
-    production: { productionMode?: "local" | "heygen"; avatarId?: string; avatarName?: string } = {}): AgentJob {
+    production: { productionMode?: "local" | "heygen"; avatarId?: string; avatarName?: string; voiceId?: string; voiceName?: string } = {}): AgentJob {
     if (production.productionMode && !["local", "heygen"].includes(production.productionMode)) throw new Error("Invalid production mode");
     if (production.productionMode === "heygen" && !production.avatarId?.trim()) throw new Error("Choose a HeyGen avatar first");
     this.db.exec("BEGIN IMMEDIATE");
@@ -186,7 +188,8 @@ export class AgentStore {
         this.db.prepare("UPDATE jobs SET status='canceled',lease=0,doc=? WHERE id=?").run(JSON.stringify(pending), pending.id);
       }
       const job: AgentJob = { id: `job_${uid}`, projectId: `agent_${uid}`, sessionId, brief, targetSeconds, autoProduce,
-        productionMode: production.productionMode ?? "local", ...(production.productionMode === "heygen" ? { avatarId: production.avatarId, avatarName: production.avatarName } : {}),
+        productionMode: production.productionMode ?? "local", ...(production.productionMode === "heygen" ? { avatarId: production.avatarId, avatarName: production.avatarName,
+          ...(production.voiceId ? { voiceId: production.voiceId, voiceName: production.voiceName } : {}) } : {}),
         status: "queued", stage: "script", createdAt: stamp, updatedAt: stamp, attempts: 0, events: [{ at: stamp, text: "Brief saved to the persistent queue" }] };
       this.db.prepare("INSERT INTO jobs(id,status,created,doc) VALUES(?,?,?,?)").run(job.id, job.status, stamp, JSON.stringify(job));
       this.message(sessionId, "user", brief); this.db.exec("COMMIT"); return job;

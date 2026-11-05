@@ -18,13 +18,16 @@ export function BrollPanel() {
 
   return (
     <>
-      <Section title="B-roll settings" description="Matching clips are picked automatically from the library for each sentence.">
-        <SwitchRow
-          title="Use B-roll after the intro"
-          description="Off keeps the whole video on the presenter or waveform"
-          checked={d.fullAvatar !== true}
-          onCheckedChange={(v) => draft.update({ fullAvatar: !v })}
-        />
+      <Section title="B-roll settings" description="B-roll starts when the hook ends. Matching clips are picked automatically from the library for each sentence of the body.">
+        {/* Older projects without a presenter can still turn B-roll off; avatar videos always cut to B-roll after the hook. */}
+        {!d.avatar?.heygenAvatarId && (
+          <SwitchRow
+            title="Use B-roll after the intro"
+            description="Off keeps the whole video on the waveform"
+            checked={d.fullAvatar !== true}
+            onCheckedChange={(v) => draft.update({ fullAvatar: !v })}
+          />
+        )}
         <div>
           <div className="mb-1.5 text-sm font-medium text-fg">Clip length</div>
           <Segmented

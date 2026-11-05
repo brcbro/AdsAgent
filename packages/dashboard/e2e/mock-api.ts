@@ -137,9 +137,28 @@ export async function mockApi(page: Page) {
     }
     if (method === "GET" && path === "/api/studio-config") {
       return json({ scriptModel: "claude-test", voiceModel: "eleven_test", voiceLanguage: "German (de)", llmProvider: "anthropic",
-        outputFolder: "video/test", services: { scripts: true, voice: true, avatar: true } });
+        outputFolder: "video/test", services: { scripts: true, voice: true, avatar: true },
+        defaultAvatar: { avatar_id: "av_1", avatar_name: "Anna Office", gender: "female", ownership: "public" } });
     }
-    if (method === "GET" && path === "/api/avatars") return json({ avatars: [{ avatar_id: "av_1", avatar_name: "Anna Office", gender: "female" }], total: 1, page: 1, limit: 48, pages: 1 });
+    if (method === "GET" && path === "/api/avatars") {
+      return json(url.searchParams.get("ownership") === "private"
+        ? { avatars: [{ avatar_id: "my_twin", avatar_name: "My Twin", gender: "male", ownership: "private", default_voice_id: "myvoice01" }], ownership: "private", total: 1, page: 1, limit: 48, pages: 1 }
+        : { avatars: [{ avatar_id: "av_1", avatar_name: "Anna Office", gender: "female", ownership: "public" }], ownership: "public", total: 1, page: 1, limit: 48, pages: 1 });
+    }
+    const avatarVoice = /^\/api\/heygen\/avatars\/([^/]+)\/voice$/.exec(path);
+    if (method === "GET" && avatarVoice) {
+      const own = avatarVoice[1] === "my_twin"
+        ? { voice_id: "myvoice01", name: "Meine Stimme", gender: "male", language: "German", preview_audio_url: null, type: "private" }
+        : { voice_id: "annavoice1", name: "Anna", gender: "female", language: "German", preview_audio_url: null, type: "public" };
+      return json({ avatarId: avatarVoice[1], groupId: "g_" + avatarVoice[1], voice: own, voiceModel: "eleven_v4" });
+    }
+    if (method === "GET" && path === "/api/heygen/voices") {
+      const type = url.searchParams.get("type") === "public" ? "public" : "private";
+      const voices = type === "private"
+        ? [{ voice_id: "myvoice01", name: "Meine Stimme", gender: "male", language: "German", preview_audio_url: null, type }]
+        : [{ voice_id: "pubvoice01", name: "Sabine - Clear & Professional", gender: "female", language: "German", preview_audio_url: null, type }];
+      return json({ voices, total: voices.length, type, language: type === "public" ? "German" : null });
+    }
     if (method === "GET" && path === "/api/agent/state") {
       const sessions = data.agent.sessions.map((s) => {
         const last = s.messages[s.messages.length - 1];

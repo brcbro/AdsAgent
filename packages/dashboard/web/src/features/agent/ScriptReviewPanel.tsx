@@ -5,7 +5,7 @@ import { AlertTriangle, Clock, FileCheck2, Lightbulb, MessageSquareReply, Rotate
 import { api, errorMessage } from "@/lib/api";
 import { cn, scriptSeconds, wordCount } from "@/lib/format";
 import { useDebounced } from "@/lib/hooks";
-import { setPrefs, usePref } from "@/lib/prefs";
+import { getPrefs, setPrefs, usePref } from "@/lib/prefs";
 import { keys } from "@/lib/queries";
 import type { AgentJob } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -81,7 +81,8 @@ export function ScriptReviewPanel({ job }: { job: AgentJob }) {
     try {
       await api.sendBrief(job.sessionId, {
         message: `${ask}\n\nAktuelles Skript:\n${text.trim()}`, targetSeconds: job.targetSeconds, autoProduce: false,
-        productionMode: job.productionMode ?? "local", ...(job.productionMode === "heygen" && job.avatarId ? { avatarId: job.avatarId } : {}),
+        // Revisions keep the job's presenter and voice; older local jobs fall back to the composer's choice.
+        ...revisionProduction(job),
       });
       clearEdit();
       setNote(""); setRevising(false);
@@ -180,4 +181,12 @@ export function ScriptReviewPanel({ job }: { job: AgentJob }) {
       </div>
     </div>
   );
+}
+
+function revisionProduction(job: AgentJob) {
+  const composer = getPrefs().agentComposer;
+  const heygen = job.productionMode === "heygen";
+  // Without a voice the server uses the presenter's own voice.
+  const voice = heygen && job.voiceId ? { voiceId: job.voiceId, voiceName: job.voiceName } : {};
+  return { productionMode: "heygen" as const, avatarId: (heygen ? job.avatarId : undefined) ?? composer.presenter?.id, ...voice };
 }

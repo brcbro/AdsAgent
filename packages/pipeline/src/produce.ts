@@ -20,9 +20,9 @@ import { generateAvatarClip } from "./heygen.js";
 import { publishToVideoFolder } from "./publish.js";
 import { saveRenderVersion } from "./versions.js";
 import { synthesize } from "./elevenlabs.js";
-import { getAvatarLook } from "./heygen.js";
+import { getAvatarLook, getVoice, type HeyGenAvatar } from "./heygen.js";
 import { config } from "./config.js";
-import { proportionalWords } from "./timing.js";
+import { hookEndMs, proportionalWords, wordsFromSrt } from "./timing.js";
 import { assertScriptCompliant } from "./compliance.js";
 import { planBeatsForAd } from "./beat-plan.js";
 import { renderAd, applyOutputSpeed } from "./render-ad.js";
@@ -98,7 +98,7 @@ export async function runProduce(
     ? [agentAvatarPath, adAvatarPath].find((p) => fs.existsSync(p))
     : undefined;
   if (skipHeygen && !savedClip) {
-    throw new Error("No saved source clip. Create a local preview or avatar video first.");
+    throw new Error("No saved source clip. Create an avatar video first.");
   }
   let avatarPath = agentAvatarPath;
 
@@ -122,9 +122,16 @@ export async function runProduce(
       const tts = JSON.parse(fs.readFileSync(ttsPath, "utf8"));
       if (tts.scriptDe === meta.scriptDe && Array.isArray(tts.words) && tts.words.length) seg.words = tts.words;
     }
+    // A HeyGen-voiced clip newer than any ElevenLabs narration carries its own timings.
+    const heygenWordsFile = heygenWordsPath(meta.id);
+    if (fs.existsSync(heygenWordsFile) && (!fs.existsSync(ttsPath) || fs.statSync(heygenWordsFile).mtimeMs >= fs.statSync(ttsPath).mtimeMs)) {
+      const saved = JSON.parse(fs.readFileSync(heygenWordsFile, "utf8"));
+      if (saved.scriptDe === meta.scriptDe && Array.isArray(saved.words) && saved.words.length) seg.words = saved.words;
+    }
   } else {
     // Catch stale avatar selections before buying narration.
-    await getAvatarLook(meta.avatar.heygenAvatarId || config.heygenAvatarId());
+    const look = await getAvatarLook(meta.avatar.heygenAvatarId || config.heygenAvatarId());
+    await useAvatarVoice(meta, look);
     const gender = meta.avatar.gender ?? inferGender(meta.avatar.name);
     const portrait = meta.aspectRatio === "9:16";
     const heygenT0 = Date.now();
@@ -150,16 +157,19 @@ export async function runProduce(
         `[${meta.id}] Avatar ${(durationMs / 1000).toFixed(1)}s (HeyGen ${((Date.now() - heygenT0) / 1000 / 60).toFixed(1)} min)`,
       );
     } else {
-      console.log(`[${meta.id}] HeyGen ${gender} avatar ${meta.avatar.heygenAvatarId} (${portrait ? "9:16" : "16:9"})...`);
-      const { durationMs } = await generateAvatarClip(meta.scriptDe, agentAvatarPath, {
+      const voice = meta.avatar.voiceName ? `voice "${meta.avatar.voiceName}"` : meta.avatar.voiceId ? `voice ${meta.avatar.voiceId}` : `default ${gender} voice`;
+      console.log(`[${meta.id}] HeyGen avatar ${meta.avatar.heygenAvatarId} with ${voice} (${portrait ? "9:16" : "16:9"})...`);
+      const { durationMs, subtitlesPath } = await generateAvatarClip(meta.scriptDe, agentAvatarPath, {
         avatarId: meta.avatar.heygenAvatarId,
         gender,
+        voiceId: meta.avatar.voiceId,
+        voiceModel: config.heygenVoiceModel(),
         portrait,
         onStatus: (s) => process.stdout.write(`\r[${meta.id}] HeyGen: ${s}        `),
       });
       console.log();
       seg.durationMs = durationMs;
-      seg.words = proportionalWords(meta.scriptDe, durationMs);
+      seg.words = saveHeygenWords(meta, durationMs, subtitlesPath);
       console.log(
         `[${meta.id}] Avatar ${(durationMs / 1000).toFixed(1)}s (HeyGen ${((Date.now() - heygenT0) / 1000 / 60).toFixed(1)} min)`,
       );
@@ -172,7 +182,11 @@ export async function runProduce(
   if (skipHeygen && fs.existsSync(beatsPath) && !options.shuffleBroll && !options.semanticBroll) {
     seg.beats = JSON.parse(fs.readFileSync(beatsPath, "utf-8")).beats;
   } else {
-    seg.beats = planBeatsForAd(seg, meta.introMs, meta.id, {
+    const introMs = meta.avatarUntil === "hook"
+      ? hookEndMs(seg.words, seg.durationMs ?? seg.estimatedMs ?? 30000, meta.introMs)
+      : meta.introMs;
+    if (meta.avatarUntil === "hook") console.log(`[${meta.id}] Presenter on screen for the hook: ${(introMs / 1000).toFixed(1)}s, then B-roll`);
+    seg.beats = planBeatsForAd(seg, introMs, meta.id, {
       fullAvatar: meta.fullAvatar,
       brollCutMs: meta.brollCutMs,
       fastCuts: meta.fastCuts,
@@ -216,6 +230,33 @@ export async function runProduce(
   }
   console.log(`[${meta.id}] Done → ${path.relative(REPO_ROOT, out)}`);
   return meta;
+}
+
+/** No voice chosen: use the avatar's own HeyGen voice (shared by all its looks) and record its name. */
+export async function useAvatarVoice(meta: ProjectMetadata, look: HeyGenAvatar): Promise<void> {
+  if (meta.avatar.voiceId || !look.default_voice_id) return;
+  meta.avatar.voiceId = look.default_voice_id;
+  try { meta.avatar.voiceName = (await getVoice(look.default_voice_id)).name; } catch { meta.avatar.voiceName = undefined; }
+  saveMetadata(meta);
+}
+
+export function heygenWordsPath(id: string): string {
+  return path.join(adDir(id), "heygen-words.json");
+}
+
+/** Caption timings for a HeyGen-voiced clip: from HeyGen's SRT when available, otherwise estimated. */
+export function saveHeygenWords(meta: ProjectMetadata, durationMs: number, subtitlesPath?: string): WordTimestamp[] {
+  let words: WordTimestamp[] = [];
+  let source: "srt" | "estimated" = "estimated";
+  if (subtitlesPath && fs.existsSync(subtitlesPath)) {
+    words = wordsFromSrt(fs.readFileSync(subtitlesPath, "utf8"), durationMs);
+    if (words.length) source = "srt";
+  }
+  if (!words.length) words = proportionalWords(meta.scriptDe, durationMs);
+  ensureDir(adDir(meta.id));
+  fs.writeFileSync(heygenWordsPath(meta.id), JSON.stringify({ scriptDe: meta.scriptDe, voiceId: meta.avatar.voiceId, voiceModel: config.heygenVoiceModel(), source, words }, null, 2));
+  console.log(`[${meta.id}] Caption timings: ${source === "srt" ? "HeyGen subtitles" : "estimated from clip length"}`);
+  return words;
 }
 
 export function metadataPath(id: string): string {

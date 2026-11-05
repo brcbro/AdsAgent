@@ -14,8 +14,10 @@ Set in `.env` as `HEYGEN_API_KEY`. Default avatar fallback: `HEYGEN_AVATAR_ID`.
 
 ## List available avatars
 
+Avatars are exposed as "looks" (API v3, cursor-paginated):
+
 ```http
-GET https://api.heygen.com/v2/avatars
+GET https://api.heygen.com/v3/avatars/looks?ownership=public&avatar_type=studio_avatar&limit=50&token={NEXT_TOKEN}
 X-Api-Key: {HEYGEN_API_KEY}
 ```
 
@@ -23,18 +25,21 @@ Response shape:
 
 ```json
 {
-  "data": {
-    "avatars": [
-      {
-        "avatar_id": "8ae04ac4c6cf4c178995f509a5a85664",
-        "avatar_name": "Josh",
-        "preview_image_url": "https://...",
-        "gender": "male"
-      }
-    ]
-  }
+  "data": [
+    {
+      "id": "8ae04ac4c6cf4c178995f509a5a85664",
+      "name": "Josh",
+      "preview_image_url": "https://...",
+      "gender": "male",
+      "supported_api_engines": ["avatar_iv"]
+    }
+  ],
+  "has_more": true,
+  "next_token": "..."
 }
 ```
+
+Single look: `GET /v3/avatars/looks/{id}`. Balance: `GET /v3/users/me`.
 
 Cached locally at `data/avatars.json` after first fetch.
 
@@ -54,44 +59,39 @@ We **never** use HeyGen TTS. Flow:
 3. Generate video with avatar lip-syncing to uploaded audio
 
 ```http
-POST https://upload.heygen.com/v1/asset
+POST https://api.heygen.com/v3/assets
 X-Api-Key: {HEYGEN_API_KEY}
-Content-Type: audio/mpeg
-Body: <raw mp3 bytes>
+Idempotency-Key: {KEY}
+Content-Type: multipart/form-data   (field: file = the MP3/WAV)
 ```
 
+Returns `{ "data": { "asset_id": "..." } }`.
+
 ```http
-POST https://api.heygen.com/v2/video/generate
+POST https://api.heygen.com/v3/videos
 X-Api-Key: {HEYGEN_API_KEY}
+Idempotency-Key: {KEY}
 Content-Type: application/json
 
 {
-  "video_inputs": [{
-    "character": {
-      "type": "avatar",
-      "avatar_id": "{AVATAR_ID}",
-      "avatar_style": "normal"
-    },
-    "voice": {
-      "type": "audio",
-      "audio_asset_id": "{ASSET_ID}"
-    },
-    "background": {
-      "type": "color",
-      "value": "#00FF00"
-    }
-  }],
-  "dimension": { "width": 720, "height": 1280 }
+  "type": "avatar",
+  "avatar_id": "{AVATAR_ID}",
+  "audio_asset_id": "{ASSET_ID}",
+  "aspect_ratio": "9:16",
+  "resolution": "1080p",
+  "fit": "cover",
+  "output_format": "mp4",
+  "engine": { "type": "avatar_iv" }
 }
 ```
 
-Poll status:
+Returns `{ "data": { "video_id": "..." } }`. Poll status:
 
 ```http
-GET https://api.heygen.com/v1/video_status.get?video_id={VIDEO_ID}
+GET https://api.heygen.com/v3/videos/{VIDEO_ID}
 ```
 
-Statuses: `waiting` → `processing` → `completed` | `failed`
+Statuses: `pending` → `processing` → `completed` (with `video_url`) | `failed`
 
 ## Selecting avatars in this project
 
@@ -118,7 +118,6 @@ Statuses: `waiting` → `processing` → `completed` | `failed`
 
 ## Tips for German training ads
 
-- Prefer **normal** avatar_style for talking-head intros
-- Green background `#00FF00` — avatar hidden after intro by B-roll overlay
+- v3 has no `avatar_style`/background fields; the avatar renders full-frame (`fit: cover`)
 - Keep scripts under ~420 chars for ~30s max duration
 - `introMs`: 5000–7000 — avatar visible only this long; voice continues over B-roll

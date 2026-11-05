@@ -78,12 +78,32 @@ export const useBrollIngest = (enabled = true) => useQuery({
 });
 export const useStudioConfig = () => useQuery({ queryKey: keys.config, queryFn: api.studioConfig, ...STATIC });
 
-export function useAvatars(params: { page: number; q?: string; portrait?: boolean; gender?: string }, enabled = true) {
+export function useAvatars(params: { page: number; q?: string; portrait?: boolean; gender?: string; ownership?: "public" | "private" }, enabled = true) {
   return useQuery({
     queryKey: keys.avatars(params),
     queryFn: () => api.avatars(params),
     enabled,
     placeholderData: keepPreviousData,
+    ...STATIC,
+  });
+}
+
+/** The avatar's own voice (shared by all its looks), picked automatically with the avatar. */
+export function useAvatarVoice(avatarId: string | undefined) {
+  return useQuery({
+    queryKey: ["avatar-voice", avatarId] as const,
+    queryFn: () => api.avatarVoice(avatarId!),
+    enabled: !!avatarId,
+    ...STATIC,
+  });
+}
+
+/** HeyGen voices: your own ("private") or the HeyGen library ("public", German). */
+export function useHeygenVoices(type: "public" | "private", enabled = true) {
+  return useQuery({
+    queryKey: ["heygen-voices", type] as const,
+    queryFn: () => api.heygenVoices({ type, language: type === "public" ? "German" : undefined }),
+    enabled,
     ...STATIC,
   });
 }

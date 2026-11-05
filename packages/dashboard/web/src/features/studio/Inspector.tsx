@@ -105,6 +105,7 @@ function AvatarCard() {
   const [open, setOpen] = useState(false);
   const avatar = draft.draft?.avatar;
   const isHeygen = !!avatar?.heygenAvatarId;
+  // Older projects made before local previews were retired still render as "Waveform intro".
   const isLocal = !isHeygen && avatar?.name === "Local waveform preview";
 
   return (
@@ -117,8 +118,13 @@ function AvatarCard() {
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold text-fg">{isHeygen ? avatar?.name || "HeyGen avatar" : isLocal ? "Waveform intro" : "No presenter"}</div>
         <div className="mt-1">
-          {isHeygen ? <Badge tone="accent">HeyGen avatar</Badge> : isLocal ? <Badge tone="info">Local preview</Badge> : <Badge>Voice + B-roll only</Badge>}
+          {isHeygen ? <Badge tone="accent">{avatar?.ownership === "private" ? "My avatar" : "HeyGen avatar"}</Badge> : isLocal ? <Badge tone="info">Local preview</Badge> : <Badge>No presenter yet</Badge>}
         </div>
+        {isHeygen && (
+          <div className="mt-1 truncate text-xs text-fg-muted" title={avatar?.voiceName}>
+            Voice: {avatar?.voiceId ? avatar.voiceName || avatar.voiceId : "avatar's own"} · ElevenLabs V4
+          </div>
+        )}
       </div>
       <Button id="avatar-change" size="sm" variant="secondary" disabled={draft.busy} onClick={() => setOpen(true)}>
         {isHeygen ? "Change" : "Choose avatar"}
@@ -131,7 +137,7 @@ function AvatarCard() {
 function ActionBar() {
   const { actions, draft } = useStudio();
   const primary = actions.primary;
-  const order: RenderAction[] = ["local", "avatar", "apply"];
+  const order: RenderAction[] = ["avatar", "apply"];
 
   return (
     <div className="shrink-0 space-y-2.5 border-t border-line bg-surface p-3 shadow-[0_-4px_12px_rgb(9_9_11/0.03)]">

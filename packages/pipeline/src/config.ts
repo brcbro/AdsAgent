@@ -32,4 +32,6 @@ export const config = {
   elevenLabsMaxChars: () => Number(process.env.ELEVENLABS_MAX_CHARS) || 3000,
   heygenApiKey: () => required("HEYGEN_API_KEY"),
   heygenAvatarId: () => required("HEYGEN_AVATAR_ID"),
+  /** ElevenLabs model HeyGen uses to speak the script (HeyGen generates the audio, ElevenLabs is its voice engine). */
+  heygenVoiceModel: () => process.env.HEYGEN_VOICE_MODEL || "eleven_v4",
 };

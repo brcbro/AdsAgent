@@ -21,7 +21,8 @@ function lastLogLine(chunk: string): string | null {
 
 export function startProduce(projectId: string, opts?: { skipHeygen?: boolean; shuffleBroll?: boolean }): void {
   const args = ["--filter", "@ai-ads/pipeline", "run", "produce", projectId,
-    "--elevenlabs", "--renderer=ffmpeg", "--semantic-broll"];
+    // Avatar videos are voiced by the HeyGen voice chosen with the presenter.
+    "--heygen-voice", "--renderer=ffmpeg", "--semantic-broll"];
   if (opts?.skipHeygen) args.push("--skip-heygen");
   if (opts?.shuffleBroll) args.push("--shuffle-broll");
 

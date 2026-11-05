@@ -64,13 +64,17 @@ async function execute(job: AgentJob) {
   }
   const catalog = path.join(REPO_ROOT, "data", "broll", "catalog.json");
   if (!fs.existsSync(catalog) || !JSON.parse(fs.readFileSync(catalog, "utf8")).length) throw new Error("B-roll library is empty");
-  if (config.elevenLabsLanguage() !== "de") throw new Error("Set ELEVENLABS_LANGUAGE=de for the German video agent");
+  // Older queued local-preview jobs still use ElevenLabs; HeyGen jobs are voiced by HeyGen.
+  if (job.productionMode !== "heygen" && config.elevenLabsLanguage() !== "de") throw new Error("Set ELEVENLABS_LANGUAGE=de for the German video agent");
   let meta = loadMetadata(job.projectId);
   if (!meta) {
     const now = new Date().toISOString();
     meta = ProjectMetadata.parse({ id: job.projectId, title: job.title || "Agent German Video", scriptDe: job.scriptDe,
-      introMs: 3000, aspectRatio: "9:16", fullAvatar: false, fastCuts: false, brollCutMs: 1800,
-      avatar: job.productionMode === "heygen" ? { heygenAvatarId: job.avatarId!, name: job.avatarName } : { heygenAvatarId: "", name: "Local waveform preview" }, avatarVolume: 1, muteAvatar: false,
+      introMs: 3000, avatarUntil: job.productionMode === "heygen" ? "hook" : undefined,
+      aspectRatio: "9:16", fullAvatar: false, fastCuts: false, brollCutMs: 1800,
+      avatar: job.productionMode === "heygen"
+        ? { heygenAvatarId: job.avatarId!, name: job.avatarName, ...(job.voiceId ? { voiceId: job.voiceId, voiceName: job.voiceName } : {}) }
+        : { heygenAvatarId: "", name: "Local waveform preview" }, avatarVolume: 1, muteAvatar: false,
       music: { ...DEFAULT_MUSIC, volume: 0.15 }, captions: { presetId: "poppins-bold-italic-pop", fontSize: 68, bottomPercent: 30, background: "none" },
       status: "draft", createdAt: now, updatedAt: now });
     saveMetadata(meta);
@@ -83,10 +87,11 @@ async function execute(job: AgentJob) {
       if (fs.existsSync(marker)) fs.unlinkSync(marker);
       job.allowVoiceRetry = false;
     }
-    job.stage = "voice"; checkpoint(job, job.productionMode === "heygen" ? "Generating or reusing ElevenLabs German narration for HeyGen v3" : "Generating or reusing ElevenLabs German narration; HeyGen disabled");
+    job.stage = job.productionMode === "heygen" ? "avatar" : "voice";
+    checkpoint(job, job.productionMode === "heygen" ? "Preparing the HeyGen presenter and voice" : "Generating or reusing ElevenLabs German narration; HeyGen disabled");
     if (job.productionMode === "heygen") {
       await runAvatarPreview(job.projectId, (stage, detail) => {
-        job.stage = stage; checkpoint(job, detail ?? (stage === "render" ? "Avatar checkpoint saved; rendering B-roll, captions and music" : "Preparing ElevenLabs German narration"));
+        job.stage = stage; checkpoint(job, detail ?? (stage === "render" ? "Avatar checkpoint saved; rendering B-roll, captions and music" : "Preparing the HeyGen presenter"));
       });
     } else await runLocalPreview(job.projectId, undefined, stage => {
       job.stage = stage; checkpoint(job, stage === "render" ? "Narration checkpoint saved; rendering B-roll, captions and music" : "Preparing local narration source");

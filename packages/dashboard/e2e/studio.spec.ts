@@ -35,21 +35,89 @@ test("autosaves script edits and only sends editable fields", async ({ page }) =
   expect(save?.body).not.toHaveProperty("outputFile");
 });
 
-test("asks before spending credits, and cancelling sends nothing", async ({ page }) => {
+test("there is no local preview; picking an avatar selects its own voice automatically", async ({ page }) => {
   await page.goto("/studio/proj_draft");
-  await page.getByRole("button", { name: "Create local preview" }).first().click();
+  await expect(page.getByRole("button", { name: /local preview/i })).toHaveCount(0);
+  await page.getByRole("button", { name: "Choose a presenter" }).click();
+  const dialog = page.getByRole("dialog", { name: "Choose a presenter" });
+  // Own avatars come first; their own voice is selected with them, spoken through ElevenLabs V4.
+  await dialog.getByRole("radio", { name: /My Twin/ }).click();
+  const voice = dialog.getByTestId("avatar-voice");
+  await expect(voice).toContainText("Meine Stimme");
+  await expect(voice).toContainText("ElevenLabs V4");
+  // Another look of the HeyGen library avatar brings that avatar's voice instead.
+  await dialog.getByRole("radio", { name: "HeyGen library" }).click();
+  await dialog.getByRole("radio", { name: /Anna Office/ }).click();
+  await expect(voice).toContainText("Anna");
+  await dialog.getByRole("button", { name: /Use Anna Office · Anna/ }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText("Voice: Anna · ElevenLabs V4")).toBeVisible();
+});
+
+test("a different voice is optional and kept when chosen", async ({ page }) => {
+  await page.goto("/studio/proj_draft");
+  await page.getByRole("button", { name: "Choose a presenter" }).click();
+  const dialog = page.getByRole("dialog", { name: "Choose a presenter" });
+  await dialog.getByRole("radio", { name: /My Twin/ }).click();
+  await expect(dialog.getByTestId("avatar-voice")).toContainText("Meine Stimme");
+  await dialog.getByRole("button", { name: "Use a different voice" }).click();
+  await dialog.getByRole("radio", { name: "HeyGen voices" }).click();
+  await dialog.getByRole("radio", { name: /Sabine/ }).click();
+  await dialog.getByRole("button", { name: /Use My Twin · Sabine/ }).click();
+  await expect(page.getByText("Voice: Sabine - Clear & Professional · ElevenLabs V4")).toBeVisible();
+});
+
+test("asks before spending HeyGen credits, and cancelling sends nothing", async ({ page }) => {
+  await page.goto("/studio/proj_draft");
+  await page.getByRole("button", { name: "Choose a presenter" }).click();
+  const picker = page.getByRole("dialog", { name: "Choose a presenter" });
+  await picker.getByRole("radio", { name: /My Twin/ }).click();
+  await picker.getByRole("button", { name: /Use My Twin · Meine Stimme/ }).click();
+  await page.getByRole("button", { name: "Create avatar video" }).first().click();
   const dialog = page.getByRole("alertdialog");
-  await expect(dialog).toContainText("ElevenLabs credits");
+  await expect(dialog).toContainText("HeyGen credits");
+  await expect(dialog).toContainText("Meine Stimme");
+  await expect(dialog).toContainText("ElevenLabs V4");
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toBeHidden();
-  expect(api.calls.some((c) => c.path.endsWith("/local-preview"))).toBe(false);
+  expect(api.calls.some((c) => c.path.endsWith("/send"))).toBe(false);
+});
+
+test("the hook editor splits the script and keeps the rest intact while typing", async ({ page }) => {
+  await page.goto("/studio/proj_draft");
+  await page.getByRole("button", { name: "Choose a presenter" }).click();
+  const picker = page.getByRole("dialog", { name: "Choose a presenter" });
+  await picker.getByRole("radio", { name: /My Twin/ }).click();
+  await picker.getByRole("button", { name: /Use My Twin · Meine Stimme/ }).click();
+  const hook = page.getByLabel("Hook — presenter on screen");
+  const rest = page.getByLabel("After the hook — over B-roll");
+  await expect(hook).toHaveValue("Drei Regeln für dein Risikomanagement.");
+  await rest.fill("Plane dein Risiko vor jedem Trade.");
+  await expect(page.locator("#script")).toHaveValue("Drei Regeln für dein Risikomanagement. Plane dein Risiko vor jedem Trade.");
+  // An unfinished hook must not swallow the rest of the script.
+  await hook.fill("Neuer Hook ohne Punkt");
+  await expect(rest).toHaveValue("Plane dein Risiko vor jedem Trade.");
+  await expect(page.getByText("End the hook with . ! or ?")).toBeVisible();
+  // Structure is a read-only check: Hook and Body are exactly the two boxes above, even mid-edit.
+  const structure = page.getByRole("list").filter({ hasText: "Hook" }).last();
+  await expect(structure.getByText("Neuer Hook ohne Punkt")).toBeVisible();
+  await hook.fill("Neuer Hook.");
+  await expect(page.locator("#script")).toHaveValue("Neuer Hook. Plane dein Risiko vor jedem Trade.");
+  await expect(structure.locator("li")).toHaveCount(2);
+  await expect(structure.locator("li").nth(0)).toContainText("Neuer Hook.");
+  await expect(structure.locator("li").nth(1)).toContainText("Body");
+  await expect(structure.locator("li").nth(1)).toContainText("Plane dein Risiko vor jedem Trade.");
+  await expect(structure.getByText("CTA")).toHaveCount(0);
+  // The presenter is on screen for the hook only: no fixed-length or whole-video choice.
+  await expect(page.getByRole("radio", { name: "Fixed length" })).toHaveCount(0);
+  await expect(page.getByRole("radio", { name: "Whole video" })).toHaveCount(0);
 });
 
 test("the avatar picker closes with Escape", async ({ page }) => {
   await page.goto("/studio/proj_draft");
-  await page.getByRole("button", { name: "Choose avatar" }).last().click();
+  await page.getByRole("button", { name: "Choose a presenter" }).click();
   const dialog = page.getByRole("dialog", { name: "Choose a presenter" });
-  await expect(dialog.getByText("Anna Office")).toBeVisible();
+  await expect(dialog.getByText("My Twin")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
 });

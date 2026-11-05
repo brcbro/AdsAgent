@@ -1,13 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { Bot, Clock, History } from "lucide-react";
-import { cn, relativeTime, splitSentences, spokenSeconds, wordCount } from "@/lib/format";
+import { cn, relativeTime, spokenSeconds, wordCount } from "@/lib/format";
 import { readScriptHistory } from "@/lib/prefs";
 import { Button } from "@/components/ui/button";
 import { Menu } from "@/components/ui/menu";
 import { Badge, Hint, Input, Label, Section } from "@/components/ui/primitives";
 import { Tip } from "@/components/ui/tooltip";
 import { useStudio } from "../studio-context";
+import { HookSection, useHookParts } from "./HookSection";
 
 const TARGET = { min: 20, max: 30 };
 
@@ -31,13 +32,19 @@ export function ScriptPanel() {
 
   const seconds = spokenSeconds(script, d.outputSpeed ?? 1);
   const inRange = seconds >= TARGET.min && seconds <= TARGET.max;
-  const sentences = splitSentences(script);
-  const segments = sentences.length >= 3
+  const hasPresenter = !!d.avatar?.heygenAvatarId;
+  const [parts, setParts] = useHookParts(script, (s) => draft.update({ scriptDe: s }));
+  // Avatar videos always keep the presenter for the hook only, then B-roll for the body.
+  useEffect(() => {
+    if (hasPresenter && (d.avatarUntil !== "hook" || d.fullAvatar)) draft.update({ avatarUntil: "hook", fullAvatar: false });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasPresenter, d.avatarUntil, d.fullAvatar]);
+  // Structure is a read-only check of exactly what the Hook and B-roll section will produce.
+  const segments = script.trim()
     ? [
-        { label: "Hook", text: sentences[0] },
-        { label: "Body", text: sentences.slice(1, -1).join(" ") },
-        { label: "CTA", text: sentences[sentences.length - 1] },
-      ]
+        { label: "Hook", text: parts.hook },
+        { label: "Body", text: parts.rest },
+      ].filter((s) => s.text.trim())
     : [];
 
   return (
@@ -98,16 +105,22 @@ export function ScriptPanel() {
         </div>
       </Section>
 
+      {hasPresenter && <HookSection parts={parts} onChange={setParts} speed={d.outputSpeed ?? 1} />}
+
       {segments.length > 0 && (
-        <Section title="Structure" description="How the script reads as an ad. Estimated from sentence order.">
+        <Section title="Structure" description={hasPresenter
+          ? "Check before rendering: the hook is said on screen by the presenter, the body plays over B-roll."
+          : "Check before rendering: the hook is the first sentence, the body is everything after it."}>
           <ol className="space-y-2">
             {segments.map((s) => (
               <li key={s.label} className="rounded-lg border border-line bg-bg p-3">
                 <div className="mb-1 flex items-center justify-between">
-                  <span className={cn("text-xs font-semibold", s.label === "Hook" ? "text-accent" : s.label === "CTA" ? "text-success" : "text-fg-secondary")}>{s.label}</span>
+                  <span className={cn("text-xs font-semibold", s.label === "Hook" ? "text-accent" : "text-fg-secondary")}>
+                    {s.label}{hasPresenter && <span className="font-normal text-fg-muted">{s.label === "Hook" ? " · presenter" : " · B-roll"}</span>}
+                  </span>
                   <span className="tabular text-xs text-fg-muted">≈ {spokenSeconds(s.text, d.outputSpeed ?? 1).toFixed(1)} s</span>
                 </div>
-                <p className="line-clamp-3 text-sm text-fg-secondary">{s.text}</p>
+                <p className="text-sm whitespace-pre-line text-fg-secondary">{s.text}</p>
               </li>
             ))}
           </ol>

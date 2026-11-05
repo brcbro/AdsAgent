@@ -29,3 +29,5 @@ data/music/*.mp3
 data/tests/local-render/
 data/learning.jsonl
 *.pptx
+# Your own HeyGen avatars; account-specific, re-read from HeyGen on demand
+data/avatars-private.json

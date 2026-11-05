@@ -1,11 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
 import type express from "express";
-import { DEFAULT_MUSIC, REMOTION_PUBLIC_ADS, REPO_ROOT, adDir, ProjectMetadata } from "@ai-ads/core";
-import { config, loadMetadata, saveMetadata } from "@ai-ads/pipeline";
+import { DEFAULT_MUSIC, REMOTION_PUBLIC_ADS, adDir, ProjectMetadata } from "@ai-ads/core";
+import { loadMetadata, saveMetadata } from "@ai-ads/pipeline";
 import type { DashboardContext } from "../context.js";
-import { renderState, startPipeline, startProduce } from "../render-state.js";
+import { renderState, startProduce } from "../render-state.js";
 
 function hasSourceClip(projectId: string): boolean {
   return fs.existsSync(path.join(adDir(projectId), "main.mp4"));
@@ -32,7 +31,7 @@ function mergeMusic(meta: ProjectMetadata): NonNullable<ProjectMetadata["music"]
 export function registerProductionRoutes(app: express.Express, ctx: DashboardContext): void {
   const { isRendering, agent: agentDashboard } = ctx;
 
-  /** Save form + produce video with selected avatar (HeyGen + Remotion + B-roll + music). */
+  /** Save form + produce video with the selected HeyGen avatar and voice, then B-roll, captions and music. */
   app.post("/api/projects/:id/send", (req, res) => {
     if (isRendering()) return res.status(409).json({ error: "A render is already in progress" });
 
@@ -45,6 +44,9 @@ export function registerProductionRoutes(app: express.Express, ctx: DashboardCon
     }
 
     meta.id = req.params.id;
+    // Avatar videos: presenter for the hook, then B-roll for the body (no fixed length or whole-video mode).
+    meta.avatarUntil = "hook";
+    meta.fullAvatar = false;
     meta.status = "generating";
     meta.updatedAt = new Date().toISOString();
     meta.music = mergeMusic(meta);
@@ -59,52 +61,6 @@ export function registerProductionRoutes(app: express.Express, ctx: DashboardCon
     res.json({ ok: true, status: "started", id: meta.id });
   });
 
-  /** Create a separate local preview from the editor; only ElevenLabs can be called. */
-  app.post("/api/projects/:id/local-preview", (req, res) => {
-    if (isRendering()) return res.status(409).json({ error: "A render is already in progress" });
-    if (!/^[A-Za-z0-9_-]+$/.test(req.params.id) || !loadMetadata(req.params.id)) {
-      return res.status(404).json({ error: "Project not found" });
-    }
-    if (typeof req.body.scriptDe !== "string" || !req.body.scriptDe.trim()) {
-      return res.status(400).json({ error: "Enter a German script first" });
-    }
-    const catalogPath = path.join(REPO_ROOT, "data/broll/catalog.json");
-    if (!fs.existsSync(catalogPath) || !JSON.parse(fs.readFileSync(catalogPath, "utf8")).length) {
-      return res.status(400).json({ error: "Add B-roll clips to the library first" });
-    }
-    try {
-      config.elevenLabsApiKey();
-      config.elevenLabsVoiceId();
-    } catch (err) {
-      return res.status(400).json({ error: (err as Error).message });
-    }
-    const now = new Date().toISOString();
-    const result = ProjectMetadata.safeParse({
-      ...req.body,
-      id: `local_${randomUUID().replace(/-/g, "")}`,
-      title: `${req.body.title || "German Video"} — Local Preview`,
-      scriptDe: req.body.scriptDe.trim(),
-      introMs: 3000,
-      fullAvatar: false,
-      fastCuts: false,
-      avatar: { heygenAvatarId: "", name: "Local waveform preview" },
-      muteAvatar: false,
-      avatarVolume: 1,
-      music: mergeMusic(req.body),
-      status: "generating",
-      error: undefined,
-      outputFile: undefined,
-      createdAt: now,
-      updatedAt: now,
-    });
-    if (!result.success) return res.status(400).json({ error: "Invalid preview settings", details: result.error.issues });
-    const meta = result.data;
-    if (meta.music) delete meta.music.startOffsetMs;
-    saveMetadata(meta);
-    startPipeline(meta.id, ["--filter", "@ai-ads/pipeline", "run", "local-preview", meta.id, req.params.id]);
-    res.json({ ok: true, id: meta.id, project: meta });
-  });
-
   /** Re-render captions/music only — reuses HeyGen clip + B-roll (no new avatar generation). */
   app.post("/api/projects/:id/recaption", (req, res) => {
     if (isRendering()) return res.status(409).json({ error: "A render is already in progress" });
@@ -112,7 +68,7 @@ export function registerProductionRoutes(app: express.Express, ctx: DashboardCon
     const meta = req.body as ProjectMetadata;
     if (!hasSourceClip(req.params.id)) {
       return res.status(400).json({
-        error: "No saved source clip — create a local preview or avatar video first",
+        error: "No saved source clip — create an avatar video first",
       });
     }
 

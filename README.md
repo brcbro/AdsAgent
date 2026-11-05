@@ -76,22 +76,25 @@ UI tests run in a real browser against a fake API, so they never touch your proj
 pnpm test:ui   # Playwright; uses Microsoft Edge on Windows
 ```
 
-To make a video without HeyGen, enter your German text in **Script**, choose captions
-and music, then click **Create Local Preview**. This creates a separate project with
-a three-second waveform intro followed by automatically matched B-roll. It uses the
-configured ElevenLabs German voice and saves word timings for captions. Matching
-saved narration is reused; new text, voice, model, or language generates new audio
-and uses ElevenLabs credits. Play or download the result, or use **Apply Edits** to
-adjust B-roll, captions, and music without generating another voice.
+Every video uses a HeyGen presenter (local previews were retired). Click **Choose a
+presenter**: **My avatars** lists your own HeyGen avatars (digital twins, photo avatars),
+**HeyGen library** the public presenters. The avatar's own voice is selected
+automatically; all looks of one avatar share it. **Use a different voice** is optional.
+HeyGen generates the video and the audio, using ElevenLabs as its voice engine with the
+model in `HEYGEN_VOICE_MODEL` (default `eleven_v4`). Captions are timed from HeyGen's
+subtitle file. Under **Script → Hook and B-roll**, edit the hook (the first sentence,
+said on screen by the presenter) and the body (spoken over B-roll); **Structure** shows
+both as a check before rendering.
+**Create avatar video** uses HeyGen credits; **Apply Edits** re-renders B-roll,
+captions and music from the saved clip without new credits.
 
 ### Agent Studio
 
 Open **Agent Studio**, describe your video, choose a target duration, and click
-**Send**. Choose **Local preview** for a waveform intro, or **HeyGen avatar** and
-a presenter for a lip-synced introduction. Both use ElevenLabs German narration
-followed by B-roll, captions and music. HeyGen mode also uses HeyGen API credits.
-Claude uses the saved conversation to write a German script;
-ElevenLabs narration, B-roll, captions and music are produced locally, then the
+**Send**. Pick a presenter (your own or from the HeyGen library); its own voice is used,
+spoken by HeyGen through ElevenLabs V4. The presenter delivers the hook, then B-roll, captions and music carry the rest.
+This uses HeyGen API credits. Claude uses the saved conversation to write a German
+script; the HeyGen clip is generated, B-roll, captions and music are rendered locally, then the
 worker checks full video decoding, audio levels, resolution, duration, caption
 timings, caption baseline and timeline/source coverage. These are technical checks;
 review the finished video for pronunciation, visual relevance and creative quality.
@@ -109,7 +112,7 @@ restarts. Scripts and completed narration are reused after interruption. If a vo
 request was interrupted before a complete audio checkpoint, the job pauses for
 review; explicit retry may use ElevenLabs credits again. Failed jobs require retry,
 with at most three attempts. Work continues while the dashboard and computer are
-running. Existing jobs and new Local preview jobs never call HeyGen.
+running. Older local-preview jobs still finish with ElevenLabs; new jobs always use HeyGen.
 
 HeyGen uses v3 for avatar listing, multipart audio uploads, generation, status and
 balance checks. Run `pnpm avatars` to refresh available public studio presenters and repair

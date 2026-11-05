@@ -71,7 +71,7 @@ export function installAgentDashboard(app: express.Express, manualBusy: () => bo
   // The list view polls this; it carries chat summaries (no message bodies) and the recent jobs plus every active one.
   app.get("/api/agent/state", (_req, res) => res.json({
     sessions: store.sessionSummaries(), jobs: store.jobs({ limit: JOB_PAGE }), totalJobs: store.jobCount(), workerRunning: !!worker,
-    mode: "Claude → ElevenLabs German → local preview or HeyGen v3 → B-roll → technical quality checks" }));
+    mode: "Claude → HeyGen v3 presenter + its own voice (ElevenLabs V4 engine) → B-roll → technical quality checks" }));
   app.get("/api/agent/worker", (req, res) => res.json({ running: !!worker, ...workerInfo, restarts: Math.max(0, workerInfo.restarts),
     log: tailLog(Math.min(Number(req.query.lines ?? 80) || 80, 400)) }));
   app.get("/api/agent/sessions", (req, res) => {
@@ -99,13 +99,18 @@ export function installAgentDashboard(app: express.Express, manualBusy: () => bo
     const seconds = Number(req.body?.targetSeconds ?? 20);
     if (typeof message !== "string" || !message.trim() || message.length > 4000) return res.status(400).json({ error: "Enter a brief of 1–4000 characters" });
     if (!Number.isInteger(seconds) || seconds < 10 || seconds > 45) return res.status(400).json({ error: "Duration must be 10–45 seconds" });
-    const productionMode = req.body?.productionMode ?? "local";
-    if (!["local", "heygen"].includes(productionMode)) return res.status(400).json({ error: "Choose Local preview or HeyGen avatar" });
+    // Videos are always made with a HeyGen presenter and a HeyGen voice; local previews were retired.
+    const productionMode = req.body?.productionMode ?? "heygen";
+    if (productionMode !== "heygen") return res.status(400).json({ error: "Local previews are no longer available. Choose a HeyGen presenter." });
     const avatarId = String(req.body?.avatarId ?? process.env.HEYGEN_AVATAR_ID ?? "");
-    const avatar = productionMode === "heygen" ? cachedAvatars().find(a => a.avatar_id === avatarId) : undefined;
-    if (productionMode === "heygen" && !avatar) return res.status(400).json({ error: "Choose an available presenter from the refreshed HeyGen catalog" });
+    const avatar = cachedAvatars().find(a => a.avatar_id === avatarId);
+    if (!avatar) return res.status(400).json({ error: "Choose an available presenter from the refreshed HeyGen catalog" });
+    // Optional: without one the avatar's own HeyGen voice is used (all looks of an avatar share it).
+    const voiceId = typeof req.body?.voiceId === "string" ? req.body.voiceId.trim() : "";
+    if (voiceId && !/^[A-Za-z0-9_-]{6,80}$/.test(voiceId)) return res.status(400).json({ error: "Invalid HeyGen voice" });
+    const voiceName = voiceId && typeof req.body?.voiceName === "string" ? req.body.voiceName.slice(0, 120) : undefined;
     try { const job = store.enqueue(req.params.id, message.trim(), seconds, req.body?.autoProduce !== false,
-      { productionMode, avatarId: avatar?.avatar_id, avatarName: avatar?.avatar_name }); startWorker(); res.json(job); }
+      { productionMode, avatarId: avatar.avatar_id, avatarName: avatar.avatar_name, voiceId: voiceId || undefined, voiceName }); startWorker(); res.json(job); }
     catch (err) { fail(res, err); }
   });
   app.get("/api/agent/jobs", (req, res) => {

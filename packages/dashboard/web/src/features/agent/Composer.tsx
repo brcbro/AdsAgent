@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { ArrowUp, Info, SlidersHorizontal, Sparkles } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
 import { cn } from "@/lib/format";
-import { keys, useStudioConfig, useSuggestions } from "@/lib/queries";
+import { keys, useAvatarVoice, useStudioConfig, useSuggestions } from "@/lib/queries";
 import { useMediaQuery } from "@/lib/hooks";
 import { setPrefs, usePref, type SavedAvatar } from "@/lib/prefs";
 import type { Suggestion } from "@/lib/types";
@@ -15,6 +15,7 @@ import { useConfirm } from "@/components/ui/dialog";
 import { Kbd, Segmented, Switch } from "@/components/ui/primitives";
 import { Tip } from "@/components/ui/tooltip";
 import { PresenterPicker, toSaved } from "./PresenterPicker";
+import { voiceModelLabel } from "../studio/AvatarVoice";
 
 export const BRIEF_INPUT_ID = "agent-brief";
 const MAX = 4000;
@@ -26,7 +27,7 @@ const SUGGESTIONS = [
 ];
 
 /**
- * The brief box. Settings (video type, presenter, length, auto-produce) and the unsent text are
+ * The brief box. Settings (presenter, voice, length, auto-produce) and the unsent text are
  * kept in prefs, so they survive switching chats and reloading the page.
  */
 export function Composer({ sessionId, busy, hasMessages, reviewPending }:
@@ -51,9 +52,13 @@ export function Composer({ sessionId, busy, hasMessages, reviewPending }:
   }), [sessionId]);
   const patch = (p: Partial<typeof composer>) => setComposer({ ...composer, ...p });
 
-  const { productionMode, duration, auto } = composer;
+  // Every video is a HeyGen presenter with a HeyGen voice; local previews were retired.
+  const { duration, auto } = composer;
   const defaultPresenter: SavedAvatar | null = config.data?.defaultAvatar ? toSaved(config.data.defaultAvatar) : null;
   const presenter = composer.presenter ?? defaultPresenter;
+  // The voice follows the presenter: its own HeyGen voice, spoken through ElevenLabs V4.
+  const avatarVoice = useAvatarVoice(presenter?.id);
+  const voiceName = avatarVoice.data?.voice?.name;
 
   // Prefill from "Improve with the Agent" in the Studio (?brief=…), then clean the URL.
   useEffect(() => {
@@ -76,8 +81,8 @@ export function Composer({ sessionId, busy, hasMessages, reviewPending }:
   }, [text, wide]);
 
   const reason = busy ? "Wait for the current job in this chat to finish"
-    : productionMode === "heygen" && !config.data?.services?.avatar ? "HeyGen isn't configured — see Settings"
-    : productionMode === "heygen" && !presenter ? "Choose a HeyGen presenter first" : null;
+    : !config.data?.services?.avatar ? "HeyGen isn't configured — see Settings"
+    : !presenter ? "Choose a HeyGen presenter first" : null;
 
   async function send() {
     const message = text.trim();
@@ -90,7 +95,7 @@ export function Composer({ sessionId, busy, hasMessages, reviewPending }:
     setSending(true);
     try {
       await api.sendBrief(sessionId, { message, targetSeconds: Number(duration), autoProduce: auto,
-        productionMode, ...(productionMode === "heygen" ? { avatarId: presenter!.id } : {}) });
+        productionMode: "heygen", avatarId: presenter!.id });
       setText("");
       toast.success("Brief queued", { description: "You can leave this page while the agent works — progress is saved." });
       await Promise.all([client.invalidateQueries({ queryKey: keys.agent }), client.invalidateQueries({ queryKey: keys.agentSession(sessionId) })]);
@@ -101,13 +106,15 @@ export function Composer({ sessionId, busy, hasMessages, reviewPending }:
     }
   }
 
-  const modeControl = (
-    <Segmented<"local" | "heygen"> label="Video type" size="sm" value={productionMode} onChange={(v) => patch({ productionMode: v })}
-      options={[{ value: "local", label: "Local preview" }, { value: "heygen", label: "HeyGen avatar" }]} />
-  );
-  const presenterControl = productionMode === "heygen" && (
-    <div className="flex min-w-0 flex-1 items-center gap-2">
+  const presenterControl = (
+    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+      <span className="text-xs font-medium text-fg-muted">Presenter</span>
       <PresenterPicker value={presenter} onChange={(a) => patch({ presenter: a })} className="min-w-44 flex-1" />
+      {presenter && (
+        <span className="min-w-0 truncate text-xs text-fg-muted" data-testid="presenter-voice">
+          Voice: {avatarVoice.isPending ? "loading…" : voiceName ? `${voiceName} (avatar's own)` : "avatar's default"} · {voiceModelLabel(avatarVoice.data?.voiceModel)}
+        </span>
+      )}
     </div>
   );
   const lengthControl = (
@@ -132,7 +139,6 @@ export function Composer({ sessionId, busy, hasMessages, reviewPending }:
       <div className="mx-auto w-full max-w-3xl">
         {wide && (
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            {modeControl}
             {presenterControl}
           </div>
         )}
@@ -172,8 +178,7 @@ export function Composer({ sessionId, busy, hasMessages, reviewPending }:
                 {autoControl}
               </>
             ) : (
-              <OptionsPopover summary={`${productionMode === "heygen" ? presenter?.name ?? "HeyGen" : "Local"} · ${duration}s · ${auto ? "Auto" : "Review first"}`}>
-                {modeControl}
+              <OptionsPopover summary={`${presenter?.name ?? "Presenter"} · ${duration}s · ${auto ? "Auto" : "Review first"}`}>
                 {presenterControl}
                 {lengthControl}
                 {autoControl}
@@ -190,7 +195,7 @@ export function Composer({ sessionId, busy, hasMessages, reviewPending }:
           </div>
         </form>
         <div className="mt-2 hidden flex-wrap items-center justify-center gap-x-4 gap-y-1 text-center text-xs text-fg-muted sm:flex">
-          <span>{productionMode === "heygen" ? "ElevenLabs German voice → HeyGen v3 presenter → B-roll, captions and music. Auto-produce uses ElevenLabs and HeyGen credits." : "Claude script · ElevenLabs German voice · local B-roll. New scripts and voices use API credits."}</span>
+          <span>Claude script → HeyGen presenter speaks the hook in its own voice (ElevenLabs V4) → B-roll, captions and music. Auto-produce uses HeyGen credits.</span>
           <span className="inline-flex items-center gap-1"><Kbd>Enter</Kbd> send <span className="ml-1.5"><Kbd>Shift</Kbd>+<Kbd>Enter</Kbd></span> new line</span>
         </div>
       </div>

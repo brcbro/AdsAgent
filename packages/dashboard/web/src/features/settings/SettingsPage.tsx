@@ -81,16 +81,9 @@ export default function SettingsPage() {
         <Card title="Spending safeguards">
           <SwitchRow
             title="Confirm before using paid API credits"
-            description="Ask before local previews and avatar videos that call ElevenLabs or HeyGen."
+            description="Ask before avatar videos that use HeyGen credits."
             checked={prefs.confirmSpend}
             onCheckedChange={(v) => setPrefs({ confirmSpend: v })}
-          />
-          <SwitchRow
-            title="Skip the confirmation for local previews"
-            description="Avatar videos are always confirmed while safeguards are on."
-            checked={prefs.skipLocalPreviewConfirm}
-            disabled={!prefs.confirmSpend}
-            onCheckedChange={(v) => setPrefs({ skipLocalPreviewConfirm: v })}
           />
         </Card>
 

@@ -6,7 +6,8 @@ import type { AspectRatio } from "./types";
  * missing (private windows), and the app must work with defaults when it is.
  */
 
-export interface SavedAvatar { id: string; name: string; image?: string; gender?: string }
+export interface SavedAvatar { id: string; name: string; image?: string; gender?: string; ownership?: "public" | "private"; defaultVoiceId?: string }
+export interface SavedVoice { id: string; name: string; type: "public" | "private" }
 
 export type ThemePref = "light" | "dark" | "system";
 
@@ -23,7 +24,7 @@ export interface Prefs {
   recentAvatars: SavedAvatar[];
   agentSessionId: string | null;
   /** Composer settings follow the person between chats and reloads. Auto-produce is off by default: the script gate is a human checkpoint. */
-  agentComposer: { productionMode: "local" | "heygen"; duration: "10" | "20" | "30" | "45"; auto: boolean; presenter: SavedAvatar | null };
+  agentComposer: { productionMode: "local" | "heygen"; duration: "10" | "20" | "30" | "45"; auto: boolean; presenter: SavedAvatar | null; voice?: SavedVoice | null };
   /** Unsent brief per chat, so switching chats or reloading never loses typed text. */
   agentDrafts: Record<string, string>;
   /** Unsaved script edits per review job. */
@@ -43,7 +44,7 @@ const DEFAULTS: Prefs = {
   favoriteAvatars: [],
   recentAvatars: [],
   agentSessionId: null,
-  agentComposer: { productionMode: "local", duration: "20", auto: false, presenter: null },
+  agentComposer: { productionMode: "heygen", duration: "20", auto: false, presenter: null, voice: null },
   agentDrafts: {},
   agentScriptEdits: {},
 };

@@ -186,7 +186,8 @@ export function registerProjectRoutes(app: express.Express): void {
     res.json({
       heygenApiVersion: "v3", defaultAvatar,
       scriptModel: config.llmProvider() === "anthropic" ? config.anthropicModel() : config.openRouterModel(),
-      voiceModel: config.elevenLabsModel(),
+      // HeyGen speaks the script through its ElevenLabs engine with this model.
+      voiceModel: config.heygenVoiceModel(),
       voiceLanguage: config.elevenLabsLanguage() === "de" ? "German (de)" : config.elevenLabsLanguage(),
       llmProvider: config.llmProvider(),
       outputFolder: path.relative(REPO_ROOT, SESSION_VIDEO_DIR) || SESSION_VIDEO_DIR,

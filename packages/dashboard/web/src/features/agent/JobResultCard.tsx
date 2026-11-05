@@ -30,7 +30,7 @@ export function JobResultCard({ job }: { job: AgentJob }) {
             : <Badge tone={status.tone} dot>{status.label}</Badge>}
         </div>
         <p className="mt-0.5 text-xs text-fg-muted">
-          {job.productionMode === "heygen" ? `HeyGen · ${job.avatarName || "Presenter"}` : "Local preview"} · {job.targetSeconds}s target
+          {job.productionMode === "heygen" ? `HeyGen · ${job.avatarName || "Presenter"}${job.voiceName ? ` · ${job.voiceName}` : ""}` : "Local preview"} · {job.targetSeconds}s target
           {job.approvedAt && <> · approved {relativeTime(job.approvedAt)}{job.approvedBy ? ` by ${job.approvedBy}` : ""}</>}
         </p>
 

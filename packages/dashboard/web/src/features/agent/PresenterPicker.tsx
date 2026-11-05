@@ -8,21 +8,23 @@ import type { SavedAvatar } from "@/lib/prefs";
 import { useAvatars } from "@/lib/queries";
 import type { HeyGenAvatar } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/primitives";
+import { Segmented, Spinner } from "@/components/ui/primitives";
 
-export const toSaved = (a: HeyGenAvatar): SavedAvatar => ({ id: a.avatar_id, name: a.avatar_name, image: a.preview_image_url, gender: a.gender });
+export const toSaved = (a: HeyGenAvatar): SavedAvatar => ({ id: a.avatar_id, name: a.avatar_name, image: a.preview_image_url, gender: a.gender,
+  ownership: a.ownership, defaultVoiceId: a.default_voice_id });
 
-/** One combobox for the HeyGen presenter: search, thumbnails, and paging through the whole catalog. */
+/** One combobox for the HeyGen presenter: your own avatars or the HeyGen library, with search and paging. */
 export function PresenterPicker({ value, onChange, disabled, className }:
   { value: SavedAvatar | null; onChange: (a: SavedAvatar) => void; disabled?: boolean; className?: string }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [ownership, setOwnership] = useState<"private" | "public">(value?.ownership ?? "private");
   const [loaded, setLoaded] = useState<HeyGenAvatar[]>([]);
   const q = useDebounced(query.trim(), 250);
-  const avatars = useAvatars({ page, q }, open);
+  const avatars = useAvatars({ page, q, ownership }, open);
 
-  useEffect(() => { setPage(1); setLoaded([]); }, [q]);
+  useEffect(() => { setPage(1); setLoaded([]); }, [q, ownership]);
   useEffect(() => {
     if (!avatars.data || avatars.isPlaceholderData) return;
     const incoming = avatars.data.avatars;
@@ -47,13 +49,17 @@ export function PresenterPicker({ value, onChange, disabled, className }:
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content align="start" sideOffset={6} className="z-50 w-80 overflow-hidden rounded-lg border border-line bg-surface shadow-lg animate-fade-in">
+          <div className="border-b border-line p-2">
+            <Segmented<"private" | "public"> label="Avatar source" size="sm" className="w-full" value={ownership} onChange={setOwnership}
+              options={[{ value: "private", label: "My avatars" }, { value: "public", label: "HeyGen library" }]} />
+          </div>
           <Command label="Presenters" shouldFilter={false} loop>
             <Command.Input autoFocus value={query} onValueChange={setQuery} placeholder="Search presenters…"
               className="h-10 w-full border-b border-line bg-transparent px-3 text-sm text-fg outline-none placeholder:text-fg-muted" />
             <Command.List className="max-h-72 overflow-y-auto p-1">
               {avatars.isError && <p className="px-3 py-6 text-center text-xs text-danger">Presenter list unavailable. Check the HeyGen settings.</p>}
               {!avatars.isError && !loaded.length && (avatars.isPending ? <div className="grid place-items-center py-6"><Spinner /></div>
-                : <Command.Empty className="px-3 py-6 text-center text-xs text-fg-muted">No presenters match.</Command.Empty>)}
+                : <Command.Empty className="px-3 py-6 text-center text-xs text-fg-muted">{ownership === "private" && !q ? "No avatars of your own yet. Try the HeyGen library." : "No presenters match."}</Command.Empty>)}
               {loaded.map((a) => (
                 <Command.Item key={a.avatar_id} value={a.avatar_id} onSelect={() => { onChange(toSaved(a)); setOpen(false); }}
                   className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-fg data-[selected=true]:bg-subtle">

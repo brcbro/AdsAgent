@@ -7,7 +7,7 @@ export const MAX_RENDER_VERSIONS = 10;
 
 /** Settings that shaped a render; stored with each version so versions can be compared and restored. */
 export const VERSION_SETTING_FIELDS = [
-  "title", "scriptDe", "aspectRatio", "outputSpeed", "introMs", "fullAvatar", "brollCutMs",
+  "title", "scriptDe", "aspectRatio", "outputSpeed", "introMs", "avatarUntil", "fullAvatar", "brollCutMs",
   "avatar", "music", "captions", "brollPinned", "brollExcluded",
 ] as const;
 

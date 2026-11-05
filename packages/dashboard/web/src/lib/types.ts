@@ -30,6 +30,11 @@ export interface AvatarConfig {
   name?: string;
   previewImageUrl?: string;
   gender?: "male" | "female";
+  /** "private" = one of your own HeyGen avatars. */
+  ownership?: "public" | "private";
+  /** HeyGen voice that speaks the script. */
+  voiceId?: string;
+  voiceName?: string;
 }
 
 export interface Project {
@@ -37,6 +42,8 @@ export interface Project {
   title: string;
   scriptDe: string;
   introMs: number;
+  /** "hook": presenter until the first sentence ends, then B-roll. "custom": introMs. */
+  avatarUntil?: "hook" | "custom";
   avatarZoom: number;
   aspectRatio?: AspectRatio;
   outputSpeed?: number;
@@ -59,7 +66,7 @@ export interface Project {
 
 /** Fields the editor may change; everything else is owned by the server and pipeline. */
 export const EDITABLE_FIELDS = [
-  "title", "scriptDe", "introMs", "aspectRatio", "outputSpeed", "fullAvatar",
+  "title", "scriptDe", "introMs", "avatarUntil", "aspectRatio", "outputSpeed", "fullAvatar",
   "brollCutMs", "avatar", "music", "captions", "brollPinned", "brollExcluded",
 ] as const;
 export type EditableField = (typeof EDITABLE_FIELDS)[number];
@@ -71,7 +78,7 @@ export interface RenderVersion {
   createdAt: string;
   file: string;
   sizeBytes: number;
-  settings: Partial<Pick<Project, "title" | "scriptDe" | "aspectRatio" | "outputSpeed" | "introMs" | "fullAvatar"
+  settings: Partial<Pick<Project, "title" | "scriptDe" | "aspectRatio" | "outputSpeed" | "introMs" | "avatarUntil" | "fullAvatar"
     | "brollCutMs" | "avatar" | "music" | "captions" | "brollPinned" | "brollExcluded">>;
 }
 
@@ -170,9 +177,25 @@ export interface HeyGenAvatar {
   gender?: string;
   preview_image_url?: string;
   preview_video_url?: string;
+  ownership?: "public" | "private";
+  avatar_type?: string;
+  default_voice_id?: string;
 }
 
+export interface HeyGenVoice {
+  voice_id: string;
+  name: string;
+  language?: string;
+  gender?: string;
+  preview_audio_url?: string | null;
+  type: "public" | "private";
+}
+
+/** An avatar's own voice; HeyGen speaks it through its ElevenLabs engine (voiceModel, e.g. eleven_v4). */
+export interface AvatarVoice { avatarId: string; groupId: string | null; voice: HeyGenVoice | null; voiceModel: string }
+
 export interface AvatarPage {
+  ownership?: "public" | "private";
   avatars: HeyGenAvatar[];
   total: number;
   page: number;
@@ -201,6 +224,8 @@ export interface AgentJob {
   productionMode?: "local" | "heygen";
   avatarId?: string;
   avatarName?: string;
+  voiceId?: string;
+  voiceName?: string;
   id: string;
   sessionId: string;
   projectId: string;
