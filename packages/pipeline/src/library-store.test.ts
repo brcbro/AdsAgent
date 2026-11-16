@@ -95,3 +95,47 @@ test("files too large for one database value stay on disk and are reported; remo
   assert.equal(fs.existsSync(path.join(lib.data, "broll", "clips", "small.mp4")), false);
   assert.equal((await store.sync()).restored, 0);
 });
+
+test("export → import moves the Library to another machine, merging catalogs and refusing foreign paths", async (t) => {
+  const a = tempLibrary(t);
+  const b = tempLibrary(t);
+  a.write("broll/clips/Trading/chart.mp4", "chart-bytes");
+  a.write("broll/previews/chart.mp4.jpg", "jpg");
+  a.write("music/01.mp3", "song");
+  a.write("broll/catalog.json", JSON.stringify([{ file: "E:\WORK\data\broll\clips\Trading\chart.mp4", name: "chart.mp4",
+    preview: "data\broll\previews\chart.mp4.jpg", category: "Trading", tags: ["chart"], description: "Candles on a laptop" }]));
+  const storeA = a.open();
+  await storeA.sync();
+  const bundle = path.join(path.dirname(a.data), "export.sqlite");
+  storeA.exportTo(bundle);
+
+  // Machine B already has a clip of its own.
+  b.write("broll/clips/Lifestyle/own.mp4", "own-bytes");
+  b.write("broll/catalog.json", JSON.stringify([{ file: "/srv/app/data/broll/clips/Lifestyle/own.mp4", name: "own.mp4", category: "Lifestyle", tags: [] }]));
+  const storeB = b.open();
+  await storeB.sync();
+
+  // A hostile or damaged export must not write outside the Library.
+  const { DatabaseSync } = await import("node:sqlite");
+  const tamper = new DatabaseSync(bundle);
+  for (const p of ["../escape.mp4", "ads/x/main.mp4"]) {
+    tamper.prepare("INSERT INTO library_files(path, kind, sha256, size, mtime_ms, updated_at, data) VALUES(?,?,?,?,?,?,?)")
+      .run(p, "broll", "0", 1, 0, "", new Uint8Array([1]));
+  }
+  tamper.close();
+
+  const report = await storeB.importFrom(bundle);
+  assert.equal(report.added, 3); // clip, preview, music
+  assert.equal(report.replaced, 1); // catalog
+  assert.equal(report.rejected, 2);
+  assert.equal(fs.readFileSync(path.join(b.data, "broll", "clips", "Trading", "chart.mp4"), "utf8"), "chart-bytes");
+  assert.equal(fs.readFileSync(path.join(b.data, "music", "01.mp3"), "utf8"), "song");
+  assert.equal(fs.existsSync(path.join(path.dirname(b.data), "escape.mp4")), false);
+  const catalog = JSON.parse(fs.readFileSync(path.join(b.data, "broll", "catalog.json"), "utf8")) as Array<{ name: string; description?: string }>;
+  assert.deepEqual(catalog.map((e) => e.name).sort(), ["chart.mp4", "own.mp4"]);
+  assert.equal(catalog.find((e) => e.name === "chart.mp4")?.description, "Candles on a laptop");
+  assert.equal(storeB.status().byKind.broll.files, 2);
+  // Importing the same file again changes nothing.
+  const again = await storeB.importFrom(bundle);
+  assert.equal(again.added + again.replaced, 0);
+});

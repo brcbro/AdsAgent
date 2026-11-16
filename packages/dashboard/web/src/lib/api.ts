@@ -1,5 +1,5 @@
 import type {
-  AgentJob, AgentSession, AgentSessionSummary, AgentState, ScriptCheck, WorkerInfo, AvatarPage, AvatarVoice, HeyGenVoice, LibraryStorage, BrollClip, BrollImportResult, BrollIngestState, CaptionPreset, MusicTrack,
+  AgentJob, AgentSession, AgentSessionSummary, AgentState, ScriptCheck, WorkerInfo, AvatarPage, AvatarVoice, HeyGenVoice, LibraryImportReport, LibraryStorage, BrollClip, BrollImportResult, BrollIngestState, CaptionPreset, MusicTrack,
   Project, ProjectDraft, RenderStatus, RenderVersion, StudioConfig,
   AdSeriesPoint, KbBriefing, MetaConnection, MetaConnectionInput, MetaConnectionTest, PatternsResponse, PerformanceOverview, PlatformAd, ProjectPerformance,
   Suggestion, SuggestionKind, SyncReport, Teardown, TeardownReport,
@@ -92,6 +92,41 @@ export const api = {
     return request<AvatarPage>(`/api/avatars?${search}`);
   },
   libraryStorage: () => request<LibraryStorage>("/api/library/storage"),
+  /**
+   * Uploads a Library export in pieces (each well under the hosting proxy's request limit), resuming at the
+   * server's offset after a failed piece, then merges it into this dashboard's Library.
+   */
+  importLibrary: async (file: File, onProgress: (sent: number, total: number) => void, chunkBytes = 32 * 1_048_576) => {
+    const id = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(36).padStart(2, "0")).join("").slice(0, 24);
+    let offset = 0;
+    let failures = 0;
+    onProgress(0, file.size);
+    while (offset < file.size) {
+      const piece = file.slice(offset, Math.min(offset + chunkBytes, file.size));
+      try {
+        const r = await fetch(`/api/library/import/${id}?offset=${offset}`, { method: "PUT", body: piece, cache: "no-store",
+          headers: { "Content-Type": "application/octet-stream" } });
+        const body = await r.json().catch(() => ({})) as { size?: number; error?: string };
+        if (!r.ok) {
+          if (typeof body.size === "number") { offset = body.size; }
+          throw new ApiError(body.error ?? `Upload failed (${r.status})`, r.status);
+        }
+        offset = body.size ?? offset + piece.size;
+        failures = 0;
+        onProgress(offset, file.size);
+      } catch (err) {
+        if (++failures > 4) {
+          await fetch(`/api/library/import/${id}`, { method: "DELETE" }).catch(() => undefined);
+          throw err instanceof ApiError ? err : new ApiError("The upload kept failing. Check the connection and try again.", 0);
+        }
+        await new Promise((r) => setTimeout(r, 1500 * failures));
+        // Ask where the server is, in case the piece arrived but the answer did not.
+        const status = await fetch(`/api/library/import/${id}`, { cache: "no-store" }).then((r) => r.json()).catch(() => null) as { size?: number } | null;
+        if (typeof status?.size === "number") offset = status.size;
+      }
+    }
+    return request<LibraryStorage & { report: LibraryImportReport }>(`/api/library/import/${id}/finish`, { json: { size: file.size } });
+  },
   syncLibraryStorage: () => request<LibraryStorage & { started: boolean }>("/api/library/storage/sync", { json: {} }),
   avatarVoice: (avatarId: string) => request<AvatarVoice>(`/api/heygen/avatars/${enc(avatarId)}/voice`),
   heygenVoices: (params: { type: "public" | "private"; language?: string; fresh?: boolean }) => {

@@ -220,5 +220,21 @@ export function listInboxClips(): string[] {
 
 export function loadBrollCatalog(): BrollCatalogEntry[] {
   if (!fs.existsSync(CATALOG_PATH)) return [];
-  try { return JSON.parse(fs.readFileSync(CATALOG_PATH, "utf-8")); } catch { return []; }
+  try { return (JSON.parse(fs.readFileSync(CATALOG_PATH, "utf-8")) as BrollCatalogEntry[]).map(localizeCatalogEntry); } catch { return []; }
+}
+
+const CLIP_TAIL = /(?:^|[\\/])data[\\/]broll[\\/]clips[\\/](.+)$/i;
+const PREVIEW_TAIL = /(?:^|[\\/])data[\\/]broll[\\/]previews[\\/](.+)$/i;
+
+/**
+ * The catalog stores where a clip lived on the machine that wrote it ("E:\…\data\broll\clips\Trading\a.mp4").
+ * When the Library moves to another machine (restored or imported from the database), the same clip sits
+ * under this machine's data folder, so paths are re-based here. On the machine that wrote them they are unchanged.
+ */
+export function localizeCatalogEntry(entry: BrollCatalogEntry): BrollCatalogEntry {
+  const clip = CLIP_TAIL.exec(entry.file ?? "");
+  const file = clip ? path.join(CLIPS_DIR, ...clip[1].split(/[\\/]/)) : entry.file;
+  const prev = entry.preview ? PREVIEW_TAIL.exec(entry.preview) : null;
+  const preview = prev ? path.join("data", "broll", "previews", ...prev[1].split(/[\\/]/)) : entry.preview;
+  return file === entry.file && preview === entry.preview ? entry : { ...entry, file, preview };
 }

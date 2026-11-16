@@ -101,6 +101,12 @@ stay on disk only (SQLite's limit for one value). Run `pnpm library-sync` to syn
 **Settings → Library storage** shows what is stored. A file deleted on disk by hand comes back
 on the next sync; removing it for good goes through `LibraryStore.remove()`.
 
+To copy the Library to another dashboard (for example the hosted one), use **Download Library**
+in Settings on the source, then **Import Library…** in Settings on the target. The download holds
+the Library tables only (no chats, performance data or tokens); the import uploads it in 32 MB
+pieces (resuming after a failed piece), adds new files, replaces files whose contents differ,
+deletes nothing, and merges the catalog. Catalog paths are re-based to each machine's data folder.
+
 ### Agent Studio
 
 Open **Agent Studio**, describe your video, choose a target duration, and click

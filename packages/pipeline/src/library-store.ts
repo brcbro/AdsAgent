@@ -58,6 +58,19 @@ export interface LibrarySyncReport {
   errors: Array<{ path: string; error: string }>;
 }
 
+export interface LibraryImportReport {
+  /** Files that were not in this Library yet. */
+  added: number;
+  /** Files whose contents differed; the imported version replaced them. */
+  replaced: number;
+  identical: number;
+  /** Rows refused: not a Library path, or contents that do not match their checksum. */
+  rejected: number;
+  /** Clip entries in the merged catalog. */
+  catalogEntries: number;
+  bytes: number;
+}
+
 export interface LibraryStatus {
   files: number;
   bytes: number;
@@ -174,6 +187,118 @@ export class LibraryStore {
     const abs = path.join(this.dataDir, ...rel.split("/"));
     if (abs.startsWith(this.dataDir + path.sep)) fs.rmSync(abs, { force: true });
     return deleted;
+  }
+
+  /**
+   * Writes the Library alone (no agent chats, performance data or tokens) into a new SQLite file,
+   * to move it to another machine. Run sync() first so it is current.
+   */
+  exportTo(file: string): LibraryStatus {
+    fs.rmSync(file, { force: true });
+    const out = new DatabaseSync(file);
+    out.exec(`CREATE TABLE library_files(path TEXT PRIMARY KEY, kind TEXT NOT NULL, sha256 TEXT NOT NULL,
+      size INTEGER NOT NULL, mtime_ms INTEGER NOT NULL, updated_at TEXT NOT NULL, data BLOB NOT NULL);
+      CREATE TABLE library_export(key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
+    out.prepare("INSERT INTO library_export(key, value) VALUES('format', 'ad-factory-library/1'), ('exported_at', ?)").run(new Date().toISOString());
+    const insert = out.prepare("INSERT INTO library_files(path, kind, sha256, size, mtime_ms, updated_at, data) VALUES(?,?,?,?,?,?,?)");
+    const paths = (this.db.prepare("SELECT path FROM library_files ORDER BY path").all() as Array<{ path: string }>).map((r) => r.path);
+    const read = this.db.prepare("SELECT path, kind, sha256, size, mtime_ms, updated_at, data FROM library_files WHERE path=?");
+    out.exec("BEGIN");
+    try {
+      // One row at a time, so a 600 MB Library never sits in memory at once.
+      for (const p of paths) {
+        const r = read.get(p) as { path: string; kind: string; sha256: string; size: number; mtime_ms: number; updated_at: string; data: Uint8Array };
+        insert.run(r.path, r.kind, r.sha256, r.size, r.mtime_ms, r.updated_at, r.data);
+      }
+      out.exec("COMMIT");
+    } catch (err) { out.exec("ROLLBACK"); out.close(); fs.rmSync(file, { force: true }); throw err; }
+    out.close();
+    return this.status();
+  }
+
+  /**
+   * Adds a Library exported from another machine: new and changed files are stored and written to disk
+   * (the imported version wins), identical ones are skipped, nothing is deleted. Catalog entries are merged,
+   * so clips that only exist here keep theirs. Only Library paths are accepted from the file.
+   */
+  async importFrom(file: string): Promise<LibraryImportReport> {
+    const src = new DatabaseSync(file, { readOnly: true });
+    const report: LibraryImportReport = { added: 0, replaced: 0, identical: 0, rejected: 0, catalogEntries: 0, bytes: 0 };
+    try {
+      const hasTable = src.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='library_files'").get();
+      if (!hasTable) throw new Error("This file is not a Library export (no library_files table)");
+      const rows = src.prepare("SELECT path, sha256, size, mtime_ms FROM library_files").all() as unknown as Row[];
+      const current = new Map((this.db.prepare("SELECT path, sha256 FROM library_files").all() as Array<{ path: string; sha256: string }>).map((r) => [r.path, r.sha256]));
+      const read = src.prepare("SELECT data FROM library_files WHERE path=?");
+      const upsert = this.db.prepare(`INSERT INTO library_files(path, kind, sha256, size, mtime_ms, updated_at, data) VALUES(?,?,?,?,?,?,?)
+        ON CONFLICT(path) DO UPDATE SET kind=excluded.kind, sha256=excluded.sha256, size=excluded.size, mtime_ms=excluded.mtime_ms,
+          updated_at=excluded.updated_at, data=excluded.data`);
+
+      // The catalog first, merged rather than replaced: the classifier would otherwise see imported clips
+      // as new and classify them again, and clips that only exist here would lose their entries.
+      const catalogRow = rows.find((r) => r.path === "broll/catalog.json");
+      if (catalogRow) {
+        try {
+          const { data } = read.get(catalogRow.path) as { data: Uint8Array };
+          const imported = JSON.parse(Buffer.from(data).toString("utf8")) as Array<Record<string, unknown>>;
+          if (!Array.isArray(imported)) throw new Error("not a list");
+          const before = this.readCatalogFile();
+          const { count, changed } = this.mergeCatalog(before, imported);
+          report.catalogEntries = count;
+          if (!changed) report.identical++; else if (fs.existsSync(this.absolute(catalogRow.path))) report.replaced++; else report.added++;
+        } catch { report.rejected++; }
+      }
+
+      for (const r of rows) {
+        if (r === catalogRow) continue;
+        const kind = libraryKind(r.path);
+        if (!kind || r.path.includes("..")) { report.rejected++; continue; }
+        const had = current.get(r.path);
+        if (had === r.sha256 && fs.existsSync(this.absolute(r.path))) { report.identical++; continue; }
+        const { data } = read.get(r.path) as { data: Uint8Array };
+        const sha = createHash("sha256").update(data).digest("hex");
+        if (sha !== r.sha256) { report.rejected++; continue; } // damaged in transit
+        upsert.run(r.path, kind, sha, data.length, r.mtime_ms, new Date().toISOString(), data);
+        this.restore(r.path, r.mtime_ms);
+        report.bytes += data.length;
+        if (had === undefined) report.added++; else report.replaced++;
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+    } finally {
+      src.close();
+    }
+    await this.sync();
+    return report;
+  }
+
+  private absolute(rel: string): string {
+    return path.join(this.dataDir, ...rel.split("/"));
+  }
+
+  private readCatalogFile(): Array<Record<string, unknown>> {
+    try { return JSON.parse(fs.readFileSync(this.absolute("broll/catalog.json"), "utf8")); } catch { return []; }
+  }
+
+  /** Imported catalog entries win; entries for clips that exist only here are kept. Keyed by the clip's place under clips/. */
+  private mergeCatalog(previous: Array<Record<string, unknown>>, imported: Array<Record<string, unknown>>): { count: number; changed: boolean } {
+    const key = (e: Record<string, unknown>) => {
+      const m = /(?:^|[\\/])clips[\\/](.+)$/i.exec(String(e.file ?? ""));
+      return (m ? m[1] : String(e.name ?? e.file ?? "")).replace(/\\/g, "/").toLowerCase();
+    };
+    const merged = new Map<string, Record<string, unknown>>();
+    for (const e of previous) merged.set(key(e), e);
+    for (const e of imported) merged.set(key(e), e);
+    const list = [...merged.values()];
+    const text = JSON.stringify(list, null, 2);
+    const target = this.absolute("broll/catalog.json");
+    let existing = "";
+    try { existing = fs.readFileSync(target, "utf8"); } catch { existing = ""; }
+    if (existing === text) return { count: list.length, changed: false };
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    const tmp = `${target}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, text);
+    fs.renameSync(tmp, target);
+    return { count: list.length, changed: true };
   }
 
   status(): LibraryStatus {

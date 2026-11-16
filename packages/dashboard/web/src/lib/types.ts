@@ -195,8 +195,12 @@ export interface HeyGenVoice {
 export interface AvatarVoice { avatarId: string; groupId: string | null; voice: HeyGenVoice | null; voiceModel: string }
 
 /** The Library kept in the database (B-roll clips, previews, catalog, music), see pipeline/src/library-store.ts. */
+export interface LibraryImportReport { added: number; replaced: number; identical: number; rejected: number; catalogEntries: number; bytes: number }
+
 export interface LibraryStorage {
   running: boolean;
+  activity?: "sync" | "export" | "import" | null;
+  lastImport?: (LibraryImportReport & { at: string }) | null;
   lastError: string | null;
   last: { at: string; durationMs: number; stored: number; updated: number; restored: number; moved: number; unchanged: number;
     tooLarge: string[]; errors: Array<{ path: string; error: string }> } | null;

@@ -4,7 +4,9 @@ import { usePrefs, type ThemePref } from "@/lib/prefs";
 import { usePresets, useStudioConfig } from "@/lib/queries";
 import type { AspectRatio } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Kbd, KeyValue, Label, Segmented, Select, Skeleton, SwitchRow } from "@/components/ui/primitives";
+import { Kbd, KeyValue, Label, ProgressBar, Segmented, Select, Skeleton, SwitchRow } from "@/components/ui/primitives";
+import { useConfirm } from "@/components/ui/dialog";
+import { useRef } from "react";
 import { SHORTCUTS } from "@/components/shell/ShortcutsDialog";
 import type { ReactNode } from "react";
 import { useState } from "react";
@@ -152,8 +154,29 @@ function LibraryStorageCard() {
   const q = useQuery({ queryKey: ["library-storage"], queryFn: api.libraryStorage,
     refetchInterval: (query) => (query.state.data?.running ? 2_000 : 60_000) });
   const [syncing, setSyncing] = useState(false);
+  const [upload, setUpload] = useState<{ sent: number; total: number; merging: boolean } | null>(null);
+  const picker = useRef<HTMLInputElement>(null);
+  const confirm = useConfirm();
   const d = q.data;
   const last = d?.last;
+
+  async function importFile(file: File) {
+    const ok = await confirm({
+      title: "Import this Library?",
+      description: <>Adds the clips, previews, catalog and music from <strong className="font-semibold text-fg">{file.name}</strong> ({mb(file.size)}) to this dashboard's Library. Files with the same name are replaced by the imported version; nothing is deleted.</>,
+      confirmLabel: "Import Library",
+    });
+    if (!ok) return;
+    setUpload({ sent: 0, total: file.size, merging: false });
+    try {
+      const r = await api.importLibrary(file, (sent, total) => setUpload({ sent, total, merging: sent >= total }));
+      client.setQueryData(["library-storage"], r);
+      await client.invalidateQueries();
+      const rep = r.report;
+      toast.success("Library imported", { description: `${rep.added} added, ${rep.replaced} replaced, ${rep.identical} already here${rep.rejected ? `, ${rep.rejected} refused` : ""} · ${rep.catalogEntries} clips in the catalog` });
+    } catch (err) { toast.error("Library import failed", { description: errorMessage(err) }); }
+    finally { setUpload(null); if (picker.current) picker.current.value = ""; }
+  }
   return (
     <Card title="Library storage" description="Every B-roll clip, preview, the catalog and every music track is stored in the database, so a backup of the database holds the whole Library. Missing files are restored from it automatically.">
       {q.isPending ? <Skeleton className="h-24" /> : q.isError ? (
@@ -178,7 +201,14 @@ function LibraryStorageCard() {
           )}
         </>
       )}
-      <Button variant="secondary" loading={syncing || !!d?.running} onClick={async () => {
+      {upload && (
+        <div className="space-y-1.5" aria-live="polite">
+          <ProgressBar value={(upload.sent / Math.max(1, upload.total)) * 100} indeterminate={upload.merging} />
+          <p className="text-xs text-fg-muted">{upload.merging ? "Adding the files to this Library…" : `Uploading ${mb(upload.sent)} of ${mb(upload.total)}`}</p>
+        </div>
+      )}
+      <div className="flex flex-wrap gap-2">
+      <Button variant="secondary" loading={syncing || (!!d?.running && d?.activity === "sync")} disabled={!!upload} onClick={async () => {
         setSyncing(true);
         try {
           const r = await api.syncLibraryStorage();
@@ -188,6 +218,13 @@ function LibraryStorageCard() {
         } catch (err) { toast.error("Library sync failed", { description: errorMessage(err) }); }
         finally { setSyncing(false); }
       }}>Sync now</Button>
+      <Button variant="secondary" disabled={!!upload} onClick={() => window.location.assign("/api/library/export")}
+        title="One file with the whole Library (no other data), to import into another dashboard">Download Library</Button>
+      <Button variant="secondary" loading={!!upload} onClick={() => picker.current?.click()}>Import Library…</Button>
+      <input ref={picker} type="file" accept=".sqlite,application/vnd.sqlite3,application/octet-stream" className="sr-only" tabIndex={-1}
+        aria-label="Library file to import" onChange={(e) => { const f = e.target.files?.[0]; if (f) void importFile(f); }} />
+      </div>
+      <p className="text-xs text-fg-muted">To copy this Library to another dashboard (for example the hosted one): Download Library here, then Import Library there.</p>
     </Card>
   );
 }

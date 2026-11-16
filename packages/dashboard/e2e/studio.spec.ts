@@ -184,4 +184,7 @@ test("Settings shows the Library stored in the database", async ({ page }) => {
   await expect(card).toContainText("169 · 549 MB");
   await expect(card).toContainText("Total in database");
   await expect(card.getByRole("button", { name: "Sync now" })).toBeVisible();
+  // Moving the Library to another dashboard: download here, import there.
+  await expect(card.getByRole("button", { name: "Download Library" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Import Library…" })).toBeVisible();
 });

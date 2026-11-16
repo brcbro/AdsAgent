@@ -14,4 +14,4 @@ export {
 } from "./broll-classify.js";
 export type { IngestState, IngestOptions, PendingWork } from "./broll-classify.js";
 export { LibraryStore, libraryKind, LIBRARY_DB_PATH, MAX_LIBRARY_FILE_BYTES } from "./library-store.js";
-export type { LibraryKind, LibraryStatus, LibrarySyncReport } from "./library-store.js";
+export type { LibraryImportReport, LibraryKind, LibraryStatus, LibrarySyncReport } from "./library-store.js";
