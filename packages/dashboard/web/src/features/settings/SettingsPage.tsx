@@ -11,6 +11,8 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, errorMessage } from "@/lib/api";
 import { keys } from "@/lib/queries";
+import { useQuery } from "@tanstack/react-query";
+import { relativeTime } from "@/lib/format";
 
 export default function SettingsPage() {
   const config = useStudioConfig();
@@ -47,6 +49,8 @@ export default function SettingsPage() {
           }}>Refresh HeyGen avatars</Button>
           <p className="text-xs text-fg-muted">HeyGen API v3 · {c?.defaultAvatar ? `Default presenter: ${c.defaultAvatar.avatar_name}` : "Refresh the catalog to select an available default presenter."}</p>
         </Card>
+
+        <LibraryStorageCard />
 
         <Card title="Output">
           <KeyValue items={[
@@ -137,5 +141,53 @@ function Service({ name, detail, ok }: { name: string; detail: string; ok?: bool
       </div>
       <span className={ok ? "text-xs font-medium text-success" : "text-xs font-medium text-danger"}>{ok ? "Configured" : "Missing key"}</span>
     </li>
+  );
+}
+
+const mb = (bytes: number) => `${(bytes / 1_048_576).toFixed(bytes > 100 * 1_048_576 ? 0 : 1)} MB`;
+
+/** B-roll clips, previews, the catalog and music are stored in the database; files on disk are a working copy. */
+function LibraryStorageCard() {
+  const client = useQueryClient();
+  const q = useQuery({ queryKey: ["library-storage"], queryFn: api.libraryStorage,
+    refetchInterval: (query) => (query.state.data?.running ? 2_000 : 60_000) });
+  const [syncing, setSyncing] = useState(false);
+  const d = q.data;
+  const last = d?.last;
+  return (
+    <Card title="Library storage" description="Every B-roll clip, preview, the catalog and every music track is stored in the database, so a backup of the database holds the whole Library. Missing files are restored from it automatically.">
+      {q.isPending ? <Skeleton className="h-24" /> : q.isError ? (
+        <p className="text-sm text-danger">Couldn't read the Library storage: {errorMessage(q.error)}</p>
+      ) : d && (
+        <>
+          <KeyValue items={[
+            { label: "B-roll clips", value: `${d.status.byKind.broll.files} · ${mb(d.status.byKind.broll.bytes)}` },
+            { label: "Previews", value: `${d.status.byKind.preview.files} · ${mb(d.status.byKind.preview.bytes)}` },
+            { label: "Music", value: `${d.status.byKind.music.files} · ${mb(d.status.byKind.music.bytes)}` },
+            { label: "Catalog", value: d.status.byKind.catalog.files ? "Stored" : "Not yet" },
+            { label: "Total in database", value: <span className="font-medium text-fg">{mb(d.status.bytes)}</span> },
+            { label: "Last sync", value: d.running ? "Syncing now…" : last ? `${relativeTime(last.at)} · ${last.stored + last.updated} stored, ${last.restored} restored` : "Not yet" },
+          ]} />
+          {(d.lastError || (last && (last.errors.length > 0 || last.tooLarge.length > 0))) && (
+            <p className="text-xs text-warning">
+              {d.lastError ? `Last sync failed: ${d.lastError}` : [
+                last!.errors.length ? `${last!.errors.length} file(s) failed: ${last!.errors.slice(0, 2).map((e) => e.path).join(", ")}` : "",
+                last!.tooLarge.length ? `${last!.tooLarge.length} file(s) over 950 MB stay on disk only` : "",
+              ].filter(Boolean).join(" · ")}
+            </p>
+          )}
+        </>
+      )}
+      <Button variant="secondary" loading={syncing || !!d?.running} onClick={async () => {
+        setSyncing(true);
+        try {
+          const r = await api.syncLibraryStorage();
+          client.setQueryData(["library-storage"], r);
+          const l = r.last;
+          toast.success("Library synced", { description: l ? `${l.stored + l.updated} stored, ${l.restored} restored, ${l.unchanged} unchanged` : undefined });
+        } catch (err) { toast.error("Library sync failed", { description: errorMessage(err) }); }
+        finally { setSyncing(false); }
+      }}>Sync now</Button>
+    </Card>
   );
 }

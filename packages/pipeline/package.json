@@ -22,7 +22,8 @@
     "music-sync": "tsx src/sync-music.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "tsx --test src/*.test.ts",
-    "briefings": "tsx src/briefings-cli.ts"
+    "briefings": "tsx src/briefings-cli.ts",
+    "library-sync": "tsx src/library-sync-cli.ts"
   },
   "dependencies": {
     "@ai-ads/core": "workspace:*",

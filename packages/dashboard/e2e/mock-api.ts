@@ -152,6 +152,10 @@ export async function mockApi(page: Page) {
         : { voice_id: "annavoice1", name: "Anna", gender: "female", language: "German", preview_audio_url: null, type: "public" };
       return json({ avatarId: avatarVoice[1], groupId: "g_" + avatarVoice[1], voice: own, voiceModel: "eleven_v4" });
     }
+    if (method === "GET" && path === "/api/library/storage") {
+      return json({ running: false, lastError: null, last: { at: iso(5), durationMs: 120, stored: 0, updated: 0, restored: 0, moved: 0, unchanged: 350, tooLarge: [], errors: [] },
+        status: { files: 350, bytes: 621_000_000, byKind: { broll: { files: 169, bytes: 576_000_000 }, preview: { files: 169, bytes: 13_000_000 }, catalog: { files: 1, bytes: 90_000 }, music: { files: 11, bytes: 32_000_000 } } } });
+    }
     if (method === "GET" && path === "/api/heygen/voices") {
       const type = url.searchParams.get("type") === "public" ? "public" : "private";
       const voices = type === "private"

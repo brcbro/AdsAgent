@@ -1,5 +1,5 @@
 import type {
-  AgentJob, AgentSession, AgentSessionSummary, AgentState, ScriptCheck, WorkerInfo, AvatarPage, AvatarVoice, HeyGenVoice, BrollClip, BrollImportResult, BrollIngestState, CaptionPreset, MusicTrack,
+  AgentJob, AgentSession, AgentSessionSummary, AgentState, ScriptCheck, WorkerInfo, AvatarPage, AvatarVoice, HeyGenVoice, LibraryStorage, BrollClip, BrollImportResult, BrollIngestState, CaptionPreset, MusicTrack,
   Project, ProjectDraft, RenderStatus, RenderVersion, StudioConfig,
   AdSeriesPoint, KbBriefing, MetaConnection, MetaConnectionInput, MetaConnectionTest, PatternsResponse, PerformanceOverview, PlatformAd, ProjectPerformance,
   Suggestion, SuggestionKind, SyncReport, Teardown, TeardownReport,
@@ -91,6 +91,8 @@ export const api = {
     if (params.gender) search.set("gender", params.gender);
     return request<AvatarPage>(`/api/avatars?${search}`);
   },
+  libraryStorage: () => request<LibraryStorage>("/api/library/storage"),
+  syncLibraryStorage: () => request<LibraryStorage & { started: boolean }>("/api/library/storage/sync", { json: {} }),
   avatarVoice: (avatarId: string) => request<AvatarVoice>(`/api/heygen/avatars/${enc(avatarId)}/voice`),
   heygenVoices: (params: { type: "public" | "private"; language?: string; fresh?: boolean }) => {
     const search = new URLSearchParams({ type: params.type });

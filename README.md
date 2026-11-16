@@ -88,6 +88,19 @@ both as a check before rendering.
 **Create avatar video** uses HeyGen credits; **Apply Edits** re-renders B-roll,
 captions and music from the saved clip without new credits.
 
+### Library storage
+
+The Library is stored in the database (`data/agent-queue/agent.sqlite`, table `library_files`):
+every B-roll clip, its preview, `data/broll/catalog.json` and every music track, as blobs.
+The database is the master copy; the files under `data/` are a working copy the renderer reads.
+The dashboard syncs on start, every 10 minutes and shortly after uploads, imports, category
+changes and classifier runs. New or changed files are stored, clips moved into a category folder
+are followed, and any file missing on disk is written back. So a backup of the database holds
+the whole Library, and a fresh machine gets it back from the database alone. Files over 950 MB
+stay on disk only (SQLite's limit for one value). Run `pnpm library-sync` to sync by hand;
+**Settings → Library storage** shows what is stored. A file deleted on disk by hand comes back
+on the next sync; removing it for good goes through `LibraryStore.remove()`.
+
 ### Agent Studio
 
 Open **Agent Studio**, describe your video, choose a target duration, and click

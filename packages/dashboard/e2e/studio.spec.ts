@@ -177,3 +177,11 @@ test("final review shows the project's data-backed suggestions under Settings", 
   await expect(cards.nth(1)).toContainText("Cut faster");
   expect(api.unexpected).toEqual([]);
 });
+
+test("Settings shows the Library stored in the database", async ({ page }) => {
+  await page.goto("/settings");
+  const card = page.locator("section, div").filter({ has: page.getByRole("heading", { name: "Library storage" }) }).last();
+  await expect(card).toContainText("169 · 549 MB");
+  await expect(card).toContainText("Total in database");
+  await expect(card.getByRole("button", { name: "Sync now" })).toBeVisible();
+});

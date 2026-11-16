@@ -9,6 +9,7 @@ import type { DashboardContext } from "./context.js";
 import { renderState } from "./render-state.js";
 import { DASHBOARD_HOST, localOnlyGuard } from "./security.js";
 import { registerAvatarRoutes } from "./routes/avatars.js";
+import { installLibrarySync, registerLibraryStorageRoutes } from "./library-sync.js";
 import { registerBrollRoutes } from "./routes/broll.js";
 import { registerLearningRoutes } from "./routes/learning.js";
 import { registerMediaRoutes } from "./routes/media.js";
@@ -41,8 +42,11 @@ registerProductionRoutes(app, ctx);
 registerAvatarRoutes(app);
 registerMediaRoutes(app);
 // The B-roll classifier waits while a manual render or an agent job runs (same rule as the worker's render lock).
-const brollIngest = installBrollIngest({ busy: () => ctx.isRendering() });
-registerBrollRoutes(app, brollIngest);
+// The Library is kept in the database: restored on start, re-stored after every change.
+const librarySync = installLibrarySync();
+registerLibraryStorageRoutes(app, librarySync);
+const brollIngest = installBrollIngest({ busy: () => ctx.isRendering(), onRun: () => librarySync.poke() });
+registerBrollRoutes(app, brollIngest, librarySync);
 registerLearningRoutes(app);
 const performance = registerPerformanceRoutes(app);
 
@@ -75,8 +79,8 @@ const server = app.listen(PORT, DASHBOARD_HOST, () => {
   console.log(`  Output folder: video/${VIDEO_SESSION}/\n`);
 });
 
-process.on("SIGINT", () => { brollIngest.close(); agentDashboard.close(); performance.close(); server.close(); process.exit(0); });
-process.on("SIGTERM", () => { brollIngest.close(); agentDashboard.close(); performance.close(); server.close(); process.exit(0); });
+process.on("SIGINT", () => { librarySync.close(); brollIngest.close(); agentDashboard.close(); performance.close(); server.close(); process.exit(0); });
+process.on("SIGTERM", () => { librarySync.close(); brollIngest.close(); agentDashboard.close(); performance.close(); server.close(); process.exit(0); });
 
 server.on("error", async (err: NodeJS.ErrnoException) => {
   if (err.code === "EADDRINUSE") {

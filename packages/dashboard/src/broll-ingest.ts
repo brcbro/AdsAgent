@@ -12,7 +12,7 @@ const POLL_MS = 5_000;
 const RETRY_COOLDOWN_MS = 10 * 60_000;
 const LOG_LINES = 200;
 
-export function installBrollIngest(opts: { busy: () => boolean }) {
+export function installBrollIngest(opts: { busy: () => boolean; /** After every run: new or moved clips go to the database. */ onRun?: () => void }) {
   let running = false;
   let requested = false;
   let closing = false;
@@ -36,6 +36,7 @@ export function installBrollIngest(opts: { busy: () => boolean }) {
       append(`Ingest failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       running = false;
+      opts.onRun?.();
       // A trigger that arrived mid-run only matters if something is still waiting.
       if (requested && !closing) { requested = false; if (hasPendingWork(Date.now(), skip)) void runNow(); }
     }

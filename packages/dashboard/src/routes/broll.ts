@@ -53,7 +53,7 @@ function collectVideos(root: string, out: string[], depth = 0): void {
 }
 
 /** Catalog, upload, import, classification state and human category corrections for the B-roll library. */
-export function registerBrollRoutes(app: express.Express, ingest: BrollIngest): void {
+export function registerBrollRoutes(app: express.Express, ingest: BrollIngest, library?: { poke: () => void }): void {
   const fail = (res: express.Response, err: unknown, status = 400) => res.status(status).json({ error: err instanceof Error ? err.message : String(err) });
 
   app.get("/api/broll/catalog", (_req, res) => {
@@ -144,6 +144,6 @@ export function registerBrollRoutes(app: express.Express, ingest: BrollIngest): 
     const { category, error } = resolveCategory(req.body?.category);
     if (error) return res.status(400).json({ error });
     if (!category) return res.status(400).json({ error: "Choose a category" });
-    try { res.json(withUrls(await setClipCategory(file, category))); } catch (err) { fail(res, err); }
+    try { res.json(withUrls(await setClipCategory(file, category))); library?.poke(); } catch (err) { fail(res, err); }
   });
 }

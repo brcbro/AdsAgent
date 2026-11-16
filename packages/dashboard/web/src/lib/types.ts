@@ -194,6 +194,15 @@ export interface HeyGenVoice {
 /** An avatar's own voice; HeyGen speaks it through its ElevenLabs engine (voiceModel, e.g. eleven_v4). */
 export interface AvatarVoice { avatarId: string; groupId: string | null; voice: HeyGenVoice | null; voiceModel: string }
 
+/** The Library kept in the database (B-roll clips, previews, catalog, music), see pipeline/src/library-store.ts. */
+export interface LibraryStorage {
+  running: boolean;
+  lastError: string | null;
+  last: { at: string; durationMs: number; stored: number; updated: number; restored: number; moved: number; unchanged: number;
+    tooLarge: string[]; errors: Array<{ path: string; error: string }> } | null;
+  status: { files: number; bytes: number; byKind: Record<"broll" | "preview" | "catalog" | "music", { files: number; bytes: number }> };
+}
+
 export interface AvatarPage {
   ownership?: "public" | "private";
   avatars: HeyGenAvatar[];

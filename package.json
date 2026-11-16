@@ -21,7 +21,8 @@
     "test": "pnpm --filter @ai-ads/pipeline run test && pnpm --filter @ai-ads/performance run test",
     "dashboard:dev": "pnpm --filter @ai-ads/dashboard run dev:web",
     "test:ui": "pnpm --filter @ai-ads/dashboard run test:e2e",
-    "briefings": "pnpm --filter @ai-ads/pipeline run briefings"
+    "briefings": "pnpm --filter @ai-ads/pipeline run briefings",
+    "library-sync": "pnpm --filter @ai-ads/pipeline run library-sync"
   },
   "engines": {
     "node": ">=22.13"
