@@ -52,7 +52,10 @@ export type FfmpegRenderInput = {
   height: number;
   outFile: string;
   workDir: string;
-  /** Show CTA button in last 4 seconds of final export (default true). */
+  /**
+   * Show the "Klicke unten auf den Link!" CTA button in the last 4 seconds of the export.
+   * Off by default; turn it on per render with `ctaEnabled: true` or the `--cta` flag.
+   */
   ctaEnabled?: boolean;
   outputSpeed?: number;
 };
@@ -164,11 +167,11 @@ export async function renderWithFfmpeg(input: FfmpegRenderInput): Promise<string
     height,
     outFile,
     workDir,
-    ctaEnabled = true,
+    ctaEnabled = process.argv.includes("--cta") && !process.argv.includes("--no-cta"),
     outputSpeed = 1,
   } = input;
 
-  const skipCta = process.argv.includes("--no-cta") || ctaEnabled === false;
+  const skipCta = !ctaEnabled;
 
   fs.mkdirSync(workDir, { recursive: true });
   const ctaWorkDir = path.join(workDir, "cta");
