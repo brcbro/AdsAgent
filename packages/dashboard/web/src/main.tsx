@@ -10,6 +10,9 @@ import { ConfirmProvider } from "./components/ui/dialog";
 import { ShellProvider } from "./components/shell/shell-context";
 import { ErrorBoundary } from "./components/shell/ErrorBoundary";
 import { App } from "./App";
+import { installPreloadErrorReload } from "./lib/chunk-reload";
+
+installPreloadErrorReload();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

@@ -1,6 +1,7 @@
 import { Component, type ReactNode } from "react";
 import { AlertTriangle, RotateCw, ServerCrash } from "lucide-react";
 import { Button } from "../ui/button";
+import { isChunkLoadError } from "../../lib/chunk-reload";
 
 /** Last-resort screen for render errors, with a retry and a details disclosure. */
 export class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -12,6 +13,18 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { error: E
 
   render() {
     if (!this.state.error) return this.props.children;
+    // The page was open across a rebuild (or the hosted login expired): a reload fixes it.
+    if (isChunkLoadError(this.state.error)) {
+      return (
+        <ErrorScreen
+          title="The studio was updated"
+          description="A newer version was installed while this page was open. Reload to continue — your saved projects are not affected."
+          details={this.state.error.message}
+          retryLabel="Reload"
+          onRetry={() => window.location.reload()}
+        />
+      );
+    }
     return (
       <ErrorScreen
         title="Something went wrong"
@@ -23,8 +36,8 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { error: E
   }
 }
 
-export function ErrorScreen({ title, description, details, onRetry, offline }:
-  { title: string; description: string; details?: string; onRetry: () => void; offline?: boolean }) {
+export function ErrorScreen({ title, description, details, onRetry, offline, retryLabel = "Try again" }:
+  { title: string; description: string; details?: string; onRetry: () => void; offline?: boolean; retryLabel?: string }) {
   return (
     <div className="grid min-h-full place-items-center bg-bg p-6">
       <div className="w-full max-w-md rounded-xl border border-line bg-surface p-8 text-center shadow-md animate-fade-in">
@@ -34,7 +47,7 @@ export function ErrorScreen({ title, description, details, onRetry, offline }:
         <h1 className="text-xl font-semibold text-fg">{title}</h1>
         <p className="mt-2 text-sm text-fg-muted">{description}</p>
         <div className="mt-6 flex justify-center gap-2">
-          <Button variant="primary" onClick={onRetry}><RotateCw /> Try again</Button>
+          <Button variant="primary" onClick={onRetry}><RotateCw /> {retryLabel}</Button>
           <Button variant="secondary" onClick={() => window.location.assign("/studio")}>Go to Studio</Button>
         </div>
         {details && (

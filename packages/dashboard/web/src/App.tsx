@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router";
 import { ErrorBoundary } from "./components/shell/ErrorBoundary";
 import { TopBar } from "./components/shell/TopBar";
@@ -12,13 +12,15 @@ import { EmptyState, Spinner } from "./components/ui/primitives";
 import { Button } from "./components/ui/button";
 import { useHotkeys } from "./lib/hooks";
 import { useThemeSync } from "./lib/theme";
+import { lazyPage } from "./lib/chunk-reload";
 import { Compass } from "lucide-react";
 
-// Secondary pages load on demand to keep the editor's first paint small.
-const AgentPage = lazy(() => import("./features/agent/AgentPage"));
-const LibraryPage = lazy(() => import("./features/library/LibraryPage"));
-const SettingsPage = lazy(() => import("./features/settings/SettingsPage"));
-const PerformancePage = lazy(() => import("./features/performance/PerformancePage"));
+// Secondary pages load on demand to keep the editor's first paint small. After a rebuild their
+// file names change, so a stale tab reloads once instead of failing (lib/chunk-reload.ts).
+const AgentPage = lazyPage(() => import("./features/agent/AgentPage"));
+const LibraryPage = lazyPage(() => import("./features/library/LibraryPage"));
+const SettingsPage = lazyPage(() => import("./features/settings/SettingsPage"));
+const PerformancePage = lazyPage(() => import("./features/performance/PerformancePage"));
 
 export function App() {
   const shell = useShell();
