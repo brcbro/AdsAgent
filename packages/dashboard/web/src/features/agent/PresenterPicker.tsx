@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Command } from "cmdk";
 import { Popover } from "radix-ui";
 import { Check, ChevronDown, UserRound } from "lucide-react";
@@ -14,8 +14,12 @@ export const toSaved = (a: HeyGenAvatar): SavedAvatar => ({ id: a.avatar_id, nam
   ownership: a.ownership, defaultVoiceId: a.default_voice_id });
 
 /** One combobox for the HeyGen presenter: your own avatars or the HeyGen library, with search and paging. */
-export function PresenterPicker({ value, onChange, disabled, className }:
-  { value: SavedAvatar | null; onChange: (a: SavedAvatar) => void; disabled?: boolean; className?: string }) {
+export function PresenterPicker({ value, onChange, disabled, className, chip, footer }:
+  { value: SavedAvatar | null; onChange: (a: SavedAvatar) => void; disabled?: boolean; className?: string;
+    /** Pill-shaped trigger for the message box. */
+    chip?: boolean;
+    /** Shown under the list, e.g. the avatar's voice. */
+    footer?: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -41,9 +45,10 @@ export function PresenterPicker({ value, onChange, disabled, className }:
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
         <button type="button" disabled={disabled} aria-label="Presenter" data-testid="presenter-picker"
-          className={cn("flex h-8 min-w-0 items-center gap-2 rounded-md border border-line bg-surface pr-2 pl-1 text-xs text-fg shadow-xs transition-colors hover:border-line-strong disabled:opacity-50", className)}>
-          <Thumb avatar={value} size="size-6" />
-          <span className="min-w-0 flex-1 truncate text-left">{value?.name ?? "Choose a presenter"}</span>
+          className={cn("flex h-8 min-w-0 items-center gap-2 border border-line bg-surface pr-2 pl-1 text-xs text-fg transition-colors hover:border-line-strong disabled:opacity-50",
+            chip ? "shrink-0 rounded-full pr-2.5" : "rounded-md shadow-xs", className)}>
+          <Thumb avatar={value} size="size-6" round={chip} />
+          <span className={cn("min-w-0 truncate text-left", chip ? "max-w-[5.5rem] sm:max-w-[9rem]" : "flex-1")}>{value?.name ?? "Choose a presenter"}</span>
           <ChevronDown className="size-3.5 shrink-0 text-fg-muted" aria-hidden />
         </button>
       </Popover.Trigger>
@@ -80,14 +85,16 @@ export function PresenterPicker({ value, onChange, disabled, className }:
               )}
             </Command.List>
           </Command>
+          {footer && <div className="border-t border-line bg-subtle px-3 py-2 text-xs text-fg-secondary">{footer}</div>}
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
   );
 }
 
-function Thumb({ avatar, size }: { avatar: SavedAvatar | null; size: string }) {
+function Thumb({ avatar, size, round }: { avatar: SavedAvatar | null; size: string; round?: boolean }) {
+  const shape = round ? "rounded-full" : "rounded-md";
   return avatar?.image
-    ? <img src={avatar.image} alt="" className={cn("shrink-0 rounded-md object-cover", size)} loading="lazy" />
-    : <span className={cn("grid shrink-0 place-items-center rounded-md bg-subtle text-fg-muted", size)} aria-hidden><UserRound className="size-3.5" /></span>;
+    ? <img src={avatar.image} alt="" className={cn("shrink-0 object-cover", shape, size)} loading="lazy" />
+    : <span className={cn("grid shrink-0 place-items-center bg-subtle text-fg-muted", shape, size)} aria-hidden><UserRound className="size-3.5" /></span>;
 }

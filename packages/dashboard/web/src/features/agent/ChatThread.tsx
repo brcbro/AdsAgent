@@ -8,6 +8,7 @@ import type { AgentJob, AgentMessage, AgentSession } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { jobFlags } from "./JobActions";
 import { JobResultCard } from "./JobResultCard";
+import { Welcome } from "./Welcome";
 
 /*
  * Chat history. It only follows new messages while the reader is already at the bottom, so
@@ -76,7 +77,7 @@ export function ChatThread({ session, jobs, busy }: { session?: AgentSession; jo
     <div className="relative min-h-0 flex-1">
       <div ref={scroller} className="h-full overflow-y-auto" role="log" aria-live="polite" aria-label="Messages">
         <div className="mx-auto w-full max-w-3xl space-y-5 px-4 py-6">
-          {!messages.length ? <Welcome /> : items}
+          {!messages.length ? <Welcome sessionId={session?.id} /> : items}
           {busy && <Thinking job={activeJob} />}
         </div>
       </div>
@@ -156,28 +157,6 @@ function Thinking({ job }: { job?: AgentJob }) {
           </div>
           {detail && <p className="mt-0.5 text-xs text-fg-muted [overflow-wrap:anywhere]">{detail}</p>}
         </div>
-      </div>
-    </div>
-  );
-}
-
-function Welcome() {
-  return (
-    <div className="mx-auto max-w-xl py-10 text-center animate-fade-in">
-      <div className="mx-auto mb-5 grid size-14 place-items-center rounded-2xl bg-accent-subtle text-accent"><Bot className="size-7" /></div>
-      <h2 className="text-2xl font-semibold tracking-tight text-fg">Your German video assistant</h2>
-      <p className="mt-3 text-base text-fg-muted">
-        Describe the audience, topic, tone and call to action. The agent writes the script, creates German narration,
-        selects B-roll and runs technical checks on the finished video.
-      </p>
-      <div className="mt-6 grid gap-2 text-left text-sm sm:grid-cols-3">
-        {[["1", "Brief", "Tell it what you need"], ["2", "Script", "Review and edit before any credits are spent"], ["3", "Video", "Checked and ready to approve"]].map(([n, t, d]) => (
-          <div key={n} className="rounded-lg border border-line bg-surface p-3 shadow-xs">
-            <div className="text-xs font-semibold text-accent">Step {n}</div>
-            <div className="mt-1 font-medium text-fg">{t}</div>
-            <div className="text-xs text-fg-muted">{d}</div>
-          </div>
-        ))}
       </div>
     </div>
   );

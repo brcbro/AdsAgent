@@ -41,6 +41,8 @@ export function fixtures() {
         { role: "user", text: "Create a ten-second video about planning.", at: iso(90) },
         { role: "assistant", text: "Here is your **German** video.", at: iso(88) },
       ],
+    }, {
+      id: "chat_3", title: "New agent chat", createdAt: iso(5), messages: [],
     }],
     jobs: [
       { id: "job_video", sessionId: "chat_1", projectId: "proj_ready", brief: "Planning video", title: "Planning video", targetSeconds: 10, autoProduce: true,
@@ -174,6 +176,11 @@ export async function mockApi(page: Page) {
     if (method === "GET" && (m = path.match(/^\/api\/agent\/sessions\/([^/]+)$/))) {
       const s = data.agent.sessions.find((x) => x.id === m![1]);
       return s ? json(s) : json({ error: "Chat not found" }, 404);
+    }
+    if (method === "POST" && (m = path.match(/^\/api\/agent\/sessions\/([^/]+)\/messages$/))) {
+      const brief = body as { message: string; targetSeconds: number; autoProduce: boolean };
+      return json({ id: "job_sent", sessionId: m[1], projectId: "agent_sent", brief: brief.message, targetSeconds: brief.targetSeconds,
+        autoProduce: brief.autoProduce, status: "queued", stage: "script", createdAt: iso(0), updatedAt: iso(0), attempts: 0, events: [] });
     }
     if (method === "GET" && path === "/api/agent/jobs") return json({ jobs: [], total: data.agent.jobs.length, offset: 0, limit: 50 });
     if (method === "GET" && path === "/api/agent/worker") return json({ running: true, restarts: 0, startedAt: iso(10), lastExitCode: null, log: ["Video agent worker started"] });

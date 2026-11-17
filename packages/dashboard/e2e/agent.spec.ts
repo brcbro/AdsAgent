@@ -54,9 +54,10 @@ test("agent replies render Markdown, typing a brief sends nothing, and the draft
 test("suggested hooks append to the brief, and the script review shows rationale, counts and claim findings", async ({ page }) => {
   const api = await mockApi(page);
   await page.goto("/agent/chat_1");
-  const chips = page.getByTestId("suggested-hooks");
-  await expect(chips).toContainText("From winning ads:");
-  await chips.getByRole("button", { name: /loss framed/ }).click();
+  await page.getByRole("button", { name: "Ideas from winning ads" }).click();
+  const ideas = page.getByTestId("suggested-hooks");
+  await expect(ideas).toContainText("From winning ads");
+  await ideas.getByRole("button", { name: /loss framed/ }).click();
   await expect(page.getByLabel("Brief for the agent")).toHaveValue(/^Hook idea: loss framed hook — Like „Hast du den NVDA-Run verpasst\?“/);
   expect(api.calls.some((c) => c.path.endsWith("/messages"))).toBe(false);
 
@@ -84,7 +85,10 @@ test("sending a brief while a script awaits review asks before replacing it", as
   await page.getByLabel("Brief for the agent").fill("Anderes Thema");
   // No local preview mode; the voice follows the presenter (its own voice, ElevenLabs V4).
   await expect(page.getByRole("radio", { name: "Local preview" })).toHaveCount(0);
+  // Presenter and voice are one chip: the voice shows when it is opened.
+  await page.getByTestId("presenter-picker").click();
   await expect(page.getByTestId("presenter-voice")).toContainText("Anna (avatar's own) · ElevenLabs V4");
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Send brief" }).click();
   const dialog = page.getByRole("alertdialog");
   await expect(dialog).toContainText("Replace the script awaiting review?");
@@ -108,7 +112,42 @@ test("on a phone the queue and chat list open as drawers and the composer folds 
   await page.getByRole("button", { name: "Chats" }).click();
   await expect(page.getByRole("dialog", { name: "Chats" }).getByRole("button", { name: "New chat" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Brief options" }).click();
-  await expect(page.getByRole("group", { name: "Target duration" })).toBeVisible();
+  // The options stay on one row of chips (scrolling sideways) instead of folding into a menu.
+  const options = page.getByRole("group", { name: "Video options" });
+  await expect(options).toBeVisible();
+  await expect(options.getByRole("button", { name: /Video length/ })).toBeVisible();
+  await expect(options.getByRole("button", { name: "Review script first" })).toBeVisible();
   expect(api.unexpected).toEqual([]);
+});
+
+test("a new chat asks what to make; a starter card fills the brief and the length chip", async ({ page }) => {
+  const api = await mockApi(page);
+  await page.goto("/agent/chat_3");
+  await expect(page.getByRole("heading", { name: "What video do you want to make?" })).toBeVisible();
+  await expect(page.getByText("Your German video assistant")).toHaveCount(0);
+  await page.getByRole("button", { name: /FOMO for beginners/ }).click();
+  await expect(page.getByLabel("Brief for the agent")).toHaveValue(/^Write a punchy 30-second ad about FOMO/);
+  await expect(page.getByRole("button", { name: "Video length: 30 seconds" })).toBeVisible();
+  // Ideas from winning ads sit next to the cards and add a line to what is typed.
+  await page.getByRole("button", { name: "Ideas from winning ads" }).first().click();
+  await page.getByTestId("suggested-hooks").getByRole("button", { name: /loss framed/ }).click();
+  await expect(page.getByLabel("Brief for the agent")).toHaveValue(/Hook idea: loss framed hook/);
+  expect(api.calls.some((c) => c.path.endsWith("/messages"))).toBe(false);
+  expect(api.unexpected).toEqual([]);
+});
+
+test("the message box is one row of chips: length menu and review toggle change what is sent", async ({ page }) => {
+  const api = await mockApi(page);
+  await page.goto("/agent/chat_3");
+  await page.getByLabel("Brief for the agent").fill("Ein Video über Geduld im Trading");
+  await page.getByRole("button", { name: /Video length/ }).click();
+  await page.getByRole("menuitem", { name: "45 seconds" }).click();
+  const review = page.getByRole("button", { name: "Review script first" });
+  await expect(review).toHaveAttribute("aria-pressed", "true");
+  await review.click();
+  await expect(review).toHaveAttribute("aria-pressed", "false");
+  await page.getByRole("button", { name: "Send brief" }).click();
+  await expect.poll(() => api.calls.find((c) => c.path === "/api/agent/sessions/chat_3/messages")?.body).toMatchObject({
+    message: "Ein Video über Geduld im Trading", targetSeconds: 45, autoProduce: true, productionMode: "heygen",
+  });
 });

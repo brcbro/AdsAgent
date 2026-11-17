@@ -1,34 +1,32 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { Popover } from "radix-ui";
 import { toast } from "sonner";
-import { ArrowUp, Info, SlidersHorizontal, Sparkles } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, Clock, FileCheck2 } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
 import { cn } from "@/lib/format";
-import { keys, useAvatarVoice, useStudioConfig, useSuggestions } from "@/lib/queries";
+import { keys, useAvatarVoice, useStudioConfig } from "@/lib/queries";
 import { useMediaQuery } from "@/lib/hooks";
-import { setPrefs, usePref, type SavedAvatar } from "@/lib/prefs";
-import type { Suggestion } from "@/lib/types";
+import { usePref, type SavedAvatar } from "@/lib/prefs";
 import { Button, DisabledReason } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/dialog";
-import { Kbd, Segmented, Switch } from "@/components/ui/primitives";
+import { Menu } from "@/components/ui/menu";
 import { Tip } from "@/components/ui/tooltip";
 import { PresenterPicker, toSaved } from "./PresenterPicker";
 import { voiceModelLabel } from "../studio/AvatarVoice";
+import { BRIEF_INPUT_ID, BRIEF_MAX as MAX, appendToBrief, setBriefDraft } from "./brief-draft";
+import { Ideas } from "./Ideas";
 
-export const BRIEF_INPUT_ID = "agent-brief";
-const MAX = 4000;
+export { BRIEF_INPUT_ID };
 const DURATIONS = ["10", "20", "30", "45"] as const;
-const SUGGESTIONS = [
-  "Create a 20-second German video about disciplined trading. Calm and educational, end with an invitation to learn more.",
-  "Write a punchy 30-second ad about FOMO in trading for beginners, with a strong hook in the first sentence.",
-  "Make a 20-second video explaining risk management in three simple rules.",
-];
+
+/** Small pill buttons under the text: presenter, length, review. Everything else lives behind them. */
+const CHIP = "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface px-3 text-xs font-medium text-fg-secondary transition-colors hover:border-line-strong hover:text-fg [&_svg]:size-3.5 [&_svg]:shrink-0";
 
 /**
- * The brief box. Settings (presenter, voice, length, auto-produce) and the unsent text are
- * kept in prefs, so they survive switching chats and reloading the page.
+ * The brief box: a text field and one row of chips (presenter, length, review first) with a round
+ * Send button. Settings and the unsent text are kept in prefs, so they survive switching chats
+ * and reloading the page.
  */
 export function Composer({ sessionId, busy, hasMessages, reviewPending }:
   { sessionId: string; busy: boolean; hasMessages: boolean; reviewPending: boolean }) {
@@ -43,20 +41,13 @@ export function Composer({ sessionId, busy, hasMessages, reviewPending }:
   const area = useRef<HTMLTextAreaElement>(null);
 
   const text = drafts[sessionId] ?? "";
-  const setText = useCallback((v: string | ((t: string) => string)) => setPrefs((p) => {
-    const current = p.agentDrafts[sessionId] ?? "";
-    const value = (typeof v === "function" ? v(current) : v).slice(0, MAX);
-    const next = { ...p.agentDrafts };
-    if (value) next[sessionId] = value; else delete next[sessionId];
-    return { agentDrafts: next };
-  }), [sessionId]);
+  const setText = (v: string | ((t: string) => string)) => setBriefDraft(sessionId, v);
   const patch = (p: Partial<typeof composer>) => setComposer({ ...composer, ...p });
 
-  // Every video is a HeyGen presenter with a HeyGen voice; local previews were retired.
+  // Every video is a HeyGen presenter speaking in its own voice; local previews were retired.
   const { duration, auto } = composer;
   const defaultPresenter: SavedAvatar | null = config.data?.defaultAvatar ? toSaved(config.data.defaultAvatar) : null;
   const presenter = composer.presenter ?? defaultPresenter;
-  // The voice follows the presenter: its own HeyGen voice, spoken through ElevenLabs V4.
   const avatarVoice = useAvatarVoice(presenter?.id);
   const voiceName = avatarVoice.data?.voice?.name;
 
@@ -106,57 +97,15 @@ export function Composer({ sessionId, busy, hasMessages, reviewPending }:
     }
   }
 
-  const presenterControl = (
-    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-      <span className="text-xs font-medium text-fg-muted">Presenter</span>
-      <PresenterPicker value={presenter} onChange={(a) => patch({ presenter: a })} className="min-w-44 flex-1" />
-      {presenter && (
-        <span className="min-w-0 truncate text-xs text-fg-muted" data-testid="presenter-voice">
-          Voice: {avatarVoice.isPending ? "loading…" : voiceName ? `${voiceName} (avatar's own)` : "avatar's default"} · {voiceModelLabel(avatarVoice.data?.voiceModel)}
-        </span>
-      )}
-    </div>
-  );
-  const lengthControl = (
-    <div className="flex items-center gap-2">
-      <span className="text-xs font-medium text-fg-muted">Length</span>
-      <Segmented label="Target duration" size="sm" value={duration} onChange={(v) => patch({ duration: v })}
-        options={DURATIONS.map((d) => ({ value: d, label: `${d}s` }))} />
-    </div>
-  );
-  const autoControl = (
-    <div className="flex items-center gap-2">
-      <Switch id="agent-auto" checked={auto} onCheckedChange={(v) => patch({ auto: v })} />
-      <label htmlFor="agent-auto" className="cursor-pointer text-xs font-medium text-fg-secondary">Auto-produce video</label>
-      <Tip content="On: the agent writes the script and produces the video in one go. Off: it stops after the script so you can review and edit it before any credits are spent.">
-        <button type="button" aria-label="About auto-produce" className="text-fg-muted hover:text-fg"><Info className="size-3.5" /></button>
-      </Tip>
-    </div>
-  );
+  const review = !auto;
 
   return (
     <div className="shrink-0 border-t border-line bg-surface px-4 pt-3 pb-3 sm:pb-4">
       <div className="mx-auto w-full max-w-3xl">
-        {wide && (
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            {presenterControl}
-          </div>
-        )}
-        {!hasMessages && !text && (
-          <div className="mb-3 flex flex-wrap gap-2">
-            {SUGGESTIONS.map((s) => (
-              <button key={s} type="button" onClick={() => { setText(s); area.current?.focus(); }} title={s}
-                className="line-clamp-2 max-w-full rounded-2xl border border-line bg-surface px-3 py-1.5 text-left text-xs text-fg-secondary shadow-xs transition-colors hover:border-line-strong hover:text-fg sm:max-w-[48%]">
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
         <form
           onSubmit={(e) => { e.preventDefault(); void send(); }}
-          className="rounded-xl border border-line bg-surface shadow-sm transition-[border-color,box-shadow] focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/15"
+          className="rounded-2xl border border-line bg-surface shadow-sm transition-[border-color,box-shadow] focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/15"
         >
-          <SuggestedHooks onPick={(line) => { setText((t) => (t.trim() ? `${t.trimEnd()}\n${line}` : line)); area.current?.focus(); }} />
           <label htmlFor={BRIEF_INPUT_ID} className="sr-only">Brief for the agent</label>
           <textarea
             id={BRIEF_INPUT_ID}
@@ -169,72 +118,55 @@ export function Composer({ sessionId, busy, hasMessages, reviewPending }:
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); }
             }}
             placeholder={hasMessages ? "Ask for a revision, or describe the next video…" : "Describe the German video you want to create…"}
-            className="block w-full resize-none rounded-t-xl bg-transparent px-4 pt-3 pb-1 text-base leading-relaxed text-fg outline-none placeholder:text-fg-muted"
+            className="block w-full resize-none rounded-t-2xl bg-transparent px-4 pt-3 pb-1 text-base leading-relaxed text-fg outline-none placeholder:text-fg-muted"
           />
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 pt-1 pb-2.5">
-            {wide ? (
-              <>
-                {lengthControl}
-                {autoControl}
-              </>
-            ) : (
-              <OptionsPopover summary={`${presenter?.name ?? "Presenter"} · ${duration}s · ${auto ? "Auto" : "Review first"}`}>
-                {presenterControl}
-                {lengthControl}
-                {autoControl}
-              </OptionsPopover>
-            )}
-            <div className="ml-auto flex items-center gap-3">
-              <span className={cn("tabular text-xs", text.length > MAX * 0.9 ? "text-warning" : "text-fg-muted")}>{text.length}/{MAX}</span>
-              <DisabledReason reason={reason}>
-                <Button type="submit" variant="primary" size="sm" loading={sending} disabled={!!reason || !text.trim()} aria-label="Send brief">
-                  <ArrowUp /> Send
-                </Button>
-              </DisabledReason>
+          <div className="flex items-center gap-2 px-3 pt-1 pb-2.5">
+            {/* One row on larger screens; on a phone the chips wrap to a second line so none is hidden. */}
+            <div role="group" aria-label="Video options" className="flex min-w-0 flex-1 flex-wrap items-center gap-2 py-0.5 sm:flex-nowrap sm:overflow-x-auto sm:[scrollbar-width:none]">
+              <PresenterPicker
+                chip
+                value={presenter}
+                onChange={(a) => patch({ presenter: a })}
+                footer={presenter && (
+                  <span data-testid="presenter-voice">
+                    Voice: {avatarVoice.isPending ? "loading…" : voiceName ? `${voiceName} (avatar's own)` : "avatar's default"} · {voiceModelLabel(avatarVoice.data?.voiceModel)}
+                  </span>
+                )}
+              />
+              <Menu
+                align="start"
+                className="min-w-36"
+                trigger={<button type="button" className={CHIP} aria-label={`Video length: ${duration} seconds`}><Clock aria-hidden />{duration} s<ChevronDown aria-hidden className="text-fg-muted" /></button>}
+                items={DURATIONS.map((d) => ({
+                  label: `${d} seconds`,
+                  icon: d === duration ? <Check /> : <span className="size-4" aria-hidden />,
+                  onSelect: () => patch({ duration: d }),
+                }))}
+              />
+              <Tip content={review
+                ? "On: it stops after the script so you can edit it before any credits are spent."
+                : "Off: it writes the script and makes the video in one go, using credits."}>
+                <button type="button" aria-pressed={review} aria-label="Review script first" onClick={() => patch({ auto: !auto })}
+                  className={cn(CHIP, review && "border-accent bg-accent-subtle text-accent hover:text-accent")}>
+                  <FileCheck2 aria-hidden />Review script first
+                </button>
+              </Tip>
             </div>
+            <Ideas onPick={(line) => { appendToBrief(sessionId, line); area.current?.focus(); }} />
+            {text.length > MAX * 0.8 && (
+              <span className={cn("tabular text-xs", text.length > MAX * 0.9 ? "text-warning" : "text-fg-muted")}>{text.length}/{MAX}</span>
+            )}
+            <DisabledReason reason={reason}>
+              <Tip content="Send. Uses HeyGen credits when it makes the video." shortcut="Enter">
+                <Button type="submit" variant="primary" size="icon" className="rounded-full" loading={sending}
+                  disabled={!!reason || !text.trim()} aria-label="Send brief">
+                  {sending ? null : <ArrowUp />}
+                </Button>
+              </Tip>
+            </DisabledReason>
           </div>
         </form>
-        <div className="mt-2 hidden flex-wrap items-center justify-center gap-x-4 gap-y-1 text-center text-xs text-fg-muted sm:flex">
-          <span>Claude script → HeyGen presenter speaks the hook in its own voice (ElevenLabs V4) → B-roll, captions and music. Auto-produce uses HeyGen credits.</span>
-          <span className="inline-flex items-center gap-1"><Kbd>Enter</Kbd> send <span className="ml-1.5"><Kbd>Shift</Kbd>+<Kbd>Enter</Kbd></span> new line</span>
-        </div>
       </div>
-    </div>
-  );
-}
-
-/** On phones the settings fold into one button so the thread keeps its space. */
-function OptionsPopover({ summary, children }: { summary: string; children: ReactNode }) {
-  return (
-    <Popover.Root>
-      <Popover.Trigger asChild>
-        <Button size="sm" variant="ghost" className="max-w-[60vw] px-2" aria-label="Brief options"><SlidersHorizontal /><span className="truncate text-xs">{summary}</span></Button>
-      </Popover.Trigger>
-      <Popover.Portal>
-        <Popover.Content align="start" sideOffset={6} className="z-50 w-[min(92vw,22rem)] space-y-3 rounded-lg border border-line bg-surface p-3 shadow-lg animate-fade-in">
-          {children}
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
-  );
-}
-
-/** Data-backed ideas from the Winning patterns; a click appends the idea to the brief so the agent builds on it. */
-function SuggestedHooks({ onPick }: { onPick: (line: string) => void }) {
-  const q = useSuggestions({ kind: ["hook", "angle", "cta"], status: ["open", "accepted"] });
-  const list = (q.data?.suggestions ?? []).slice(0, 5);
-  if (!list.length) return null;
-  const line = (s: Suggestion) => `${s.kind === "hook" ? "Hook idea" : s.kind === "angle" ? "Angle" : "CTA"}: ${s.title.replace(/^(Open with a|Lead with the|Close with a)\s/, "")} — ${s.body}`;
-  return (
-    <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-3 py-2" data-testid="suggested-hooks" aria-label="Suggested from winning ads">
-      <Sparkles className="size-3.5 text-accent" aria-hidden />
-      <span className="mr-1 text-xs text-fg-muted">From winning ads:</span>
-      {list.map((s) => (
-        <button key={s.id} type="button" onClick={() => onPick(line(s))} title={s.rationale}
-          className="press inline-flex h-7 items-center gap-1 rounded-full border border-line bg-subtle px-2.5 text-xs font-medium text-fg-secondary transition-colors hover:border-accent hover:text-fg">
-          <span className="text-fg-muted">{s.kind === "hook" ? "Hook" : s.kind === "angle" ? "Angle" : "CTA"}</span> {s.title.replace(/^(Open with a|Lead with the|Close with a)\s/, "").replace(/\s(hook|angle|CTA)$/, "")}
-        </button>
-      ))}
     </div>
   );
 }
