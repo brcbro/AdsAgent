@@ -1,3 +1,4 @@
+import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/format";
 import type { AgentJob } from "@/lib/types";
 
@@ -47,6 +48,29 @@ export function StageStepper({ job, className }: { job: AgentJob; className?: st
           </li>
         );
       })}
+    </ol>
+  );
+}
+
+const LINE: Array<{ ids: AgentJob["stage"][]; label: string }> = [
+  { ids: ["script"], label: "Script" },
+  { ids: ["voice", "avatar"], label: "Presenter" },
+  { ids: ["render"], label: "Render" },
+  { ids: ["quality", "complete"], label: "Checks" },
+];
+
+/** The four steps of making a video on one line, the current one in bold: Script › Presenter › Render › Checks. */
+export function ProgressLine({ job, className }: { job: AgentJob; className?: string }) {
+  const current = LINE.findIndex((s) => s.ids.includes(job.stage));
+  return (
+    <ol className={cn("flex flex-wrap items-center gap-x-1 text-xs", className)} aria-label="Progress">
+      {LINE.map((s, i) => (
+        <li key={s.label} aria-current={i === current ? "step" : undefined}
+          className={cn("inline-flex items-center gap-1", i < current ? "text-fg-secondary" : i === current ? "font-medium text-fg" : "text-fg-muted")}>
+          {i > 0 && <ChevronRight className="size-3 text-fg-muted" aria-hidden />}
+          {s.label}
+        </li>
+      ))}
     </ol>
   );
 }

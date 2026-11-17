@@ -8,6 +8,7 @@ import type { AgentJob, AgentMessage, AgentSession } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { jobFlags } from "./JobActions";
 import { JobResultCard } from "./JobResultCard";
+import { ProgressLine } from "./StageStepper";
 import { Welcome } from "./Welcome";
 
 /*
@@ -150,12 +151,14 @@ function Thinking({ job }: { job?: AgentJob }) {
         <span className="mt-1.5 flex gap-1" aria-hidden>
           {[0, 160, 320].map((d) => <span key={d} className="size-1.5 rounded-full bg-accent animate-pulse-soft" style={{ animationDelay: `${d}ms` }} />)}
         </span>
-        <div className="min-w-0">
+        {/* The latest worker note is in the tooltip and the Jobs panel; the bubble stays to one step line. */}
+        <div className="min-w-0" title={detail}>
           <div className="flex flex-wrap items-center gap-x-2 text-sm text-fg-secondary">
             <span>{headline}…</span>
             {!queued && since && <span className="tabular text-xs text-fg-muted">{elapsed(since, now)}</span>}
           </div>
-          {detail && <p className="mt-0.5 text-xs text-fg-muted [overflow-wrap:anywhere]">{detail}</p>}
+          {job && !queued && <ProgressLine job={job} className="mt-1" />}
+          {detail && <span className="sr-only">{detail}</span>}
         </div>
       </div>
     </div>

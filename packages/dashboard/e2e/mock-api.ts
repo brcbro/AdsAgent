@@ -43,11 +43,17 @@ export function fixtures() {
       ],
     }, {
       id: "chat_3", title: "New agent chat", createdAt: iso(5), messages: [],
+    }, {
+      id: "chat_4", title: "Rendering test", createdAt: iso(8), messages: [{ role: "user", text: "Ein Video über Disziplin", at: iso(8) }],
     }],
     jobs: [
       { id: "job_video", sessionId: "chat_1", projectId: "proj_ready", brief: "Planning video", title: "Planning video", targetSeconds: 10, autoProduce: true,
         status: "done", stage: "complete", createdAt: iso(90), updatedAt: iso(85), attempts: 1, events: [{ at: iso(90), text: "Worker started" }],
+        scriptDe: "Plane deinen Tag in drei klaren Schritten.",
         quality: { passed: true, checkedAt: iso(85), durationSeconds: 9.8, checks: [{ name: "Decodes", result: "pass", detail: "ok" }] } },
+      { id: "job_running", sessionId: "chat_4", projectId: "agent_running", brief: "Ein Video über Disziplin", title: "Disziplin", targetSeconds: 20, autoProduce: true,
+        status: "running", stage: "avatar", productionMode: "heygen", avatarName: "Anna Office", createdAt: iso(4), updatedAt: iso(1), attempts: 1,
+        events: [{ at: iso(4), text: "Worker started" }, { at: iso(1), text: "HeyGen: processing" }] },
       { id: "job_reply", sessionId: "chat_1", projectId: "agent_reply", brief: "Can I edit the script?", title: "Question about scripts", targetSeconds: 20, autoProduce: true,
         status: "done", stage: "complete", createdAt: iso(70), updatedAt: iso(69), attempts: 1, events: [{ at: iso(70), text: "Answered" }] },
       { id: "job_review", sessionId: "chat_2", projectId: "agent_review", brief: "Verpasster NVDA-Run", title: "NVDA FOMO", targetSeconds: 20, autoProduce: false,

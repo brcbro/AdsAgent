@@ -1,16 +1,18 @@
 import { useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { AlertTriangle, Clock, FileCheck2, Lightbulb, MessageSquareReply, RotateCcw, ShieldAlert, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Clock, FileCheck2, Lightbulb, MessageSquareReply, MoreHorizontal, RotateCcw, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
-import { cn, scriptSeconds, wordCount } from "@/lib/format";
+import { cn, scriptSeconds } from "@/lib/format";
 import { useDebounced } from "@/lib/hooks";
 import { getPrefs, setPrefs, usePref } from "@/lib/prefs";
 import { keys } from "@/lib/queries";
 import type { AgentJob } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/dialog";
+import { Menu, type MenuEntry } from "@/components/ui/menu";
 import { Badge, Textarea } from "@/components/ui/primitives";
+import { Tip } from "@/components/ui/tooltip";
 
 const MIN_CHARS = 30;
 const MAX_CHARS = 1500;
@@ -95,6 +97,18 @@ export function ScriptReviewPanel({ job }: { job: AgentJob }) {
     }
   }
 
+  // Rare actions sit behind the menu so the card shows two choices: approve, or ask for changes.
+  const more: MenuEntry[] = [
+    ...(changed ? [{ label: "Revert my edits", icon: <RotateCcw />, onSelect: clearEdit }] : []),
+    { label: "Discard script", icon: <Trash2 />, danger: true, keepFocus: true, separatorBefore: changed, onSelect: () => void cancel() },
+  ];
+  const creditsNote = job.productionMode === "heygen"
+    ? `Uses HeyGen credits for ${job.avatarName || "your presenter"}, then adds B-roll, captions and music.`
+    : "Generates narration (API credits) and renders the video.";
+  const approveButton = (
+    <Button variant="primary" loading={busy === "approve"} disabled={!!approveReason} title={approveReason ?? undefined} onClick={approve}>Approve & produce</Button>
+  );
+
   return (
     <div className="shrink-0 border-t border-warning/30 bg-warning-subtle/60 px-4 py-3 sm:py-4" data-testid="script-review">
       <div className="mx-auto w-full max-w-3xl rounded-xl border border-line bg-surface p-3 shadow-md animate-fade-in sm:p-4">
@@ -104,7 +118,6 @@ export function ScriptReviewPanel({ job }: { job: AgentJob }) {
           <span className="hidden text-sm text-fg-muted sm:inline">— {job.title || "German script"}</span>
           <div className="ml-auto flex items-center gap-2">
             <Badge tone={off ? "warning" : "success"}><Clock className="size-3" /> ≈ {Math.round(seconds)} s / {job.targetSeconds} s target</Badge>
-            <Badge className="hidden sm:inline-flex">{wordCount(text)} words</Badge>
           </div>
         </div>
         {job.error && (
@@ -168,14 +181,11 @@ export function ScriptReviewPanel({ job }: { job: AgentJob }) {
         )}
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {changed && (
-            <Button size="sm" variant="ghost" onClick={clearEdit}><RotateCcw /> Revert edits</Button>
-          )}
-          {!revising && <Button size="sm" variant="ghost" onClick={() => setRevising(true)}><MessageSquareReply /> Ask the agent to revise</Button>}
-          <p className="hidden text-xs text-fg-muted sm:block">{job.productionMode === "heygen" ? `Approving uses ElevenLabs and HeyGen credits for ${job.avatarName || "your presenter"}, B-roll and captions.` : "Approving generates ElevenLabs narration (API credits) and renders the video."}</p>
-          <div className="ml-auto flex gap-2">
-            <Button variant="danger-ghost" size="sm" loading={busy === "cancel"} onClick={cancel}>Discard</Button>
-            <Button variant="primary" loading={busy === "approve"} disabled={!!approveReason} title={approveReason ?? undefined} onClick={approve}>Approve & produce</Button>
+          {!revising && <Button size="sm" variant="secondary" onClick={() => setRevising(true)}><MessageSquareReply /> Ask for changes</Button>}
+          <div className="ml-auto flex items-center gap-2">
+            <Menu items={more} className="w-48"
+              trigger={<Button size="icon-sm" variant="ghost" aria-label="More actions" title="More actions"><MoreHorizontal /></Button>} />
+            {approveReason ? approveButton : <Tip content={creditsNote}>{approveButton}</Tip>}
           </div>
         </div>
       </div>

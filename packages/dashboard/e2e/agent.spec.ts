@@ -1,32 +1,47 @@
 import { expect, test } from "@playwright/test";
 import { mockApi } from "./mock-api";
 
-test("chat-only replies are compact rows without approval; rendered jobs show the video inline and in the queue", async ({ page }) => {
+test("one result per video: the card in the chat has the video and Approve; the Jobs panel tracks progress without repeating them", async ({ page }) => {
   const api = await mockApi(page);
   await page.goto("/agent/chat_1");
   await expect(page.getByRole("heading", { level: 1, name: "Workday planning video" })).toBeVisible();
+  // No permanent queue column: the Jobs panel opens from a button.
+  await expect(page.getByRole("complementary", { name: "Jobs" })).toHaveCount(0);
 
-  const queue = page.getByRole("complementary", { name: "Job queue" });
-  const reply = queue.getByTestId("job-reply").filter({ hasText: "Question about scripts" });
-  await expect(reply.getByText("Answered in the chat")).toBeVisible();
-  await expect(reply.getByRole("button", { name: "Approve" })).toHaveCount(0);
-
-  const video = queue.getByRole("article").filter({ hasText: "Planning video" }).first();
-  await expect(video.getByRole("button", { name: "Approve" })).toBeVisible();
-  await expect(video.getByText("1/1 technical checks passed")).toBeVisible();
-
-  // The same result sits in the conversation, where it is reachable on narrow screens.
+  // The result card in the conversation: one player, one main button, the rest behind the menu.
   const inline = page.getByRole("log").getByTestId("job-result");
   await expect(inline).toHaveCount(1);
+  await expect(inline.locator("video")).toHaveCount(1);
   await expect(inline.getByRole("button", { name: "Approve" })).toBeVisible();
-  await expect(inline.getByRole("button", { name: "Request changes" })).toBeVisible();
+  await expect(inline.getByRole("button", { name: "Open in Studio" })).toBeVisible();
+  await expect(inline.getByRole("button", { name: "Request changes" })).toHaveCount(0);
+  await expect(inline.getByText("Technical check passed")).toBeVisible();
+  await inline.getByRole("button", { name: "More actions" }).click();
+  for (const name of ["Request changes", "German script", "Quality report", "Activity"]) await expect(page.getByRole("menuitem", { name })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Quality report" }).click();
+  const report = page.getByRole("dialog", { name: "Quality report" });
+  await expect(report).toContainText("Decodes");
+  await page.keyboard.press("Escape");
+  await expect(report).toBeHidden();
+
+  // The Jobs panel: chat-only replies stay quiet rows; the video job has no second player or Approve.
+  await page.getByRole("button", { name: /Jobs/ }).click();
+  const queue = page.getByRole("complementary", { name: "Jobs" });
+  const reply = queue.getByTestId("job-reply").filter({ hasText: "Question about scripts" });
+  await expect(reply.getByText("Answered in the chat")).toBeVisible();
+  const video = queue.getByRole("article").filter({ hasText: "Planning video" }).first();
+  await expect(video.getByText("Technical check passed")).toBeVisible();
+  await expect(video.locator("video")).toHaveCount(0);
+  await expect(video.getByRole("button", { name: "Approve" })).toHaveCount(0);
+  await expect(video.getByRole("button", { name: "Open in Studio" })).toBeVisible();
   expect(api.unexpected).toEqual([]);
 });
 
 test("request changes records a note and drops it into the composer as the next brief", async ({ page }) => {
   const api = await mockApi(page);
   await page.goto("/agent/chat_1");
-  await page.getByRole("log").getByRole("button", { name: "Request changes" }).click();
+  await page.getByRole("log").getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menuitem", { name: "Request changes" }).click();
   const dialog = page.getByRole("dialog", { name: "Request changes" });
   await dialog.getByLabel("What should change").fill("Hook is too slow");
   await dialog.getByRole("button", { name: "Send back for changes" }).click();
@@ -103,10 +118,10 @@ test("on a phone the queue and chat list open as drawers and the composer folds 
   const api = await mockApi(page);
   await page.setViewportSize({ width: 420, height: 780 });
   await page.goto("/agent/chat_1");
-  await expect(page.getByRole("complementary", { name: "Job queue" })).toHaveCount(0);
-  await page.getByRole("button", { name: /Queue/ }).click();
-  const drawer = page.getByRole("dialog", { name: "Job queue" });
-  await expect(drawer.getByRole("complementary", { name: "Job queue" })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "Jobs" })).toHaveCount(0);
+  await page.getByRole("button", { name: /Jobs/ }).click();
+  const drawer = page.getByRole("dialog", { name: "Jobs" });
+  await expect(drawer.getByRole("complementary", { name: "Jobs" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(drawer).toBeHidden();
   await page.getByRole("button", { name: "Chats" }).click();
@@ -150,4 +165,36 @@ test("the message box is one row of chips: length menu and review toggle change 
   await expect.poll(() => api.calls.find((c) => c.path === "/api/agent/sessions/chat_3/messages")?.body).toMatchObject({
     message: "Ein Video über Geduld im Trading", targetSeconds: 45, autoProduce: true, productionMode: "heygen",
   });
+});
+
+test("while a video is being made the thread shows one line of steps, and the Jobs panel shows the latest note", async ({ page }) => {
+  const api = await mockApi(page);
+  await page.goto("/agent/chat_4");
+  await expect(page.getByRole("status")).toContainText("Animating the HeyGen presenter");
+  const steps = page.getByRole("status").getByRole("list", { name: "Progress" });
+  await expect(steps.getByRole("listitem")).toHaveText(["Script", "Presenter", "Render", "Checks"]);
+  await expect(steps.getByRole("listitem").nth(1)).toHaveAttribute("aria-current", "step");
+  await expect(page.getByTestId("job-result")).toHaveCount(0);
+  // The Jobs button counts running jobs; the panel adds the worker's latest note.
+  await page.getByRole("button", { name: /Jobs/ }).click();
+  await expect(page.getByRole("complementary", { name: "Jobs" }).getByText("HeyGen: processing")).toBeVisible();
+  expect(api.unexpected).toEqual([]);
+});
+
+test("the script review offers two choices; discard and revert live in the menu", async ({ page }) => {
+  const api = await mockApi(page);
+  await page.goto("/agent/chat_2");
+  const review = page.getByTestId("script-review");
+  await expect(review.getByRole("button", { name: "Approve & produce" })).toBeEnabled();
+  await expect(review.getByRole("button", { name: "Ask for changes" })).toBeVisible();
+  await expect(review.getByRole("button", { name: "Discard" })).toHaveCount(0);
+  await review.getByRole("button", { name: "More actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Discard script" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Revert my edits" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await review.getByLabel("German script").fill("Hast du den NVDA-Run verpasst? Dann kennst du das Gefühl. Jetzt lernen.");
+  await review.getByRole("button", { name: "More actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Revert my edits" })).toBeVisible();
+  expect(api.calls.some((c) => c.path.endsWith("/approve") || c.path.endsWith("/cancel"))).toBe(false);
+  expect(api.unexpected).toEqual([]);
 });

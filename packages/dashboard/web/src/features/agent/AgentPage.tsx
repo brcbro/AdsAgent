@@ -28,9 +28,8 @@ export default function AgentPage() {
   const state = useAgentState();
   const [savedId, setSavedId] = usePref("agentSessionId");
   const [panel, setPanel] = useState<"chats" | "queue" | null>(null);
-  // Tablets keep the chat list; the queue needs the full desktop width.
+  // Tablets keep the chat list; the Jobs panel opens from a button at every width, so the conversation keeps the room.
   const showList = useMediaQuery("(min-width: 1024px)");
-  const showQueue = useMediaQuery("(min-width: 1280px)");
   const creating = useRef(false);
 
   const sessions = state.data?.sessions ?? [];
@@ -92,12 +91,9 @@ export default function AgentPage() {
             <h1 className="truncate text-base font-semibold text-fg">{summary?.title || "New chat"}</h1>
             {summary && <p className="truncate text-xs text-fg-muted">Started {relativeTime(summary.createdAt)} · {summary.messageCount} messages</p>}
           </div>
-          {busy && <Badge tone="accent" dot pulse>Working</Badge>}
-          {!showQueue && (
-            <Button size="sm" variant="secondary" onClick={() => setPanel("queue")}>
-              <ListTodo /> Queue {activeCount > 0 && <Badge tone="accent">{activeCount}</Badge>}
-            </Button>
-          )}
+          <Button size="sm" variant="secondary" onClick={() => setPanel("queue")}>
+            <ListTodo /> Jobs {activeCount > 0 && <Badge tone="accent" dot pulse>{activeCount}</Badge>}
+          </Button>
         </div>
 
         {state.isSuccess && routeId && !summary ? (
@@ -118,7 +114,7 @@ export default function AgentPage() {
         {summary && <Composer sessionId={summary.id} busy={busy} hasMessages={summary.messageCount > 0} reviewPending={!!reviewJob} />}
       </section>
 
-      {showQueue ? queue : <Drawer side="right" label="Job queue" open={panel === "queue"} onOpenChange={(o) => setPanel(o ? "queue" : null)}>{queue}</Drawer>}
+      <Drawer side="right" label="Jobs" open={panel === "queue"} onOpenChange={(o) => setPanel(o ? "queue" : null)}>{queue}</Drawer>
     </div>
   );
 }
