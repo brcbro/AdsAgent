@@ -57,10 +57,12 @@ test("agent replies render Markdown, typing a brief sends nothing, and the draft
   await page.goto("/agent/chat_1");
   await expect(page.getByRole("log").locator("strong", { hasText: "German" })).toBeVisible();
   await page.getByLabel("Brief for the agent").fill("Mach es kürzer");
-  await page.getByRole("navigation").getByRole("button", { name: /NVDA FOMO hook/ }).click();
+  await page.getByRole("heading", { level: 1 }).getByRole("button").click();
+  await page.getByRole("dialog", { name: "Chats" }).getByRole("button", { name: /NVDA FOMO hook/ }).click();
   await expect(page.getByRole("heading", { level: 1, name: "NVDA FOMO hook" })).toBeVisible();
   await expect(page.getByLabel("Brief for the agent")).toHaveValue("");
-  await page.getByRole("navigation").getByRole("button", { name: /Workday planning video/ }).click();
+  await page.getByRole("heading", { level: 1 }).getByRole("button").click();
+  await page.getByRole("dialog", { name: "Chats" }).getByRole("button", { name: /Workday planning video/ }).click();
   await expect(page.getByLabel("Brief for the agent")).toHaveValue("Mach es kürzer");
   expect(api.calls.some((c) => c.path.endsWith("/messages"))).toBe(false);
   expect(api.unexpected).toEqual([]);
@@ -124,7 +126,7 @@ test("on a phone the queue and chat list open as drawers and the composer folds 
   await expect(drawer.getByRole("complementary", { name: "Jobs" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(drawer).toBeHidden();
-  await page.getByRole("button", { name: "Chats" }).click();
+  await page.getByRole("heading", { level: 1 }).getByRole("button").click();
   await expect(page.getByRole("dialog", { name: "Chats" }).getByRole("button", { name: "New chat" })).toBeVisible();
   await page.keyboard.press("Escape");
   // The options stay on one row of chips (scrolling sideways) instead of folding into a menu.
@@ -196,5 +198,51 @@ test("the script review offers two choices; discard and revert live in the menu"
   await review.getByRole("button", { name: "More actions" }).click();
   await expect(page.getByRole("menuitem", { name: "Revert my edits" })).toBeVisible();
   expect(api.calls.some((c) => c.path.endsWith("/approve") || c.path.endsWith("/cancel"))).toBe(false);
+  expect(api.unexpected).toEqual([]);
+});
+
+test("the chat list is a dropdown under the title, not a column; search, switching and archived chats work from it", async ({ page }) => {
+  const api = await mockApi(page);
+  await page.goto("/agent/chat_1");
+  await expect(page.getByRole("complementary", { name: "Chats" })).toHaveCount(0);
+  // Other chats that are working or waiting for a review put a dot on the title.
+  await expect(page.getByTitle("Another chat needs attention")).toBeVisible();
+  const title = page.getByRole("heading", { level: 1 }).getByRole("button");
+  await title.click();
+  const list = page.getByRole("dialog", { name: "Chats" });
+  await expect(list.getByRole("button", { name: /Workday planning video/ })).toBeVisible();
+  await list.getByPlaceholder("Search chats").fill("NVDA");
+  await expect(list.getByRole("button", { name: /Workday planning video/ })).toHaveCount(0);
+  await list.getByRole("button", { name: /NVDA FOMO hook/ }).click();
+  await expect(page).toHaveURL(/\/agent\/chat_2$/);
+  await expect(page.getByRole("heading", { level: 1, name: "NVDA FOMO hook" })).toBeVisible();
+  await expect(list).toBeHidden();
+  // Archived chats open in their own window, outside the dropdown.
+  await title.click();
+  await page.getByRole("dialog", { name: "Chats" }).getByRole("button", { name: "Archived chats" }).click();
+  await expect(page.getByRole("dialog", { name: "Archived chats" })).toContainText("Nothing archived.");
+  expect(api.unexpected).toEqual([]);
+});
+
+test("New chat sits in the header and opens the empty chat", async ({ page }) => {
+  const api = await mockApi(page);
+  await page.goto("/agent/chat_1");
+  await page.getByRole("button", { name: "New chat" }).click();
+  await expect(page).toHaveURL(/\/agent\/chat_3$/);
+  await expect(page.getByRole("heading", { name: "What video do you want to make?" })).toBeVisible();
+  expect(api.unexpected).toEqual([]);
+});
+
+test("on a phone nothing scrolls sideways: the header fits title, New chat and Jobs on every chat", async ({ page }) => {
+  const api = await mockApi(page);
+  for (const [width, id] of [[380, "chat_1"], [380, "chat_2"], [380, "chat_3"], [380, "chat_4"], [360, "chat_1"], [360, "chat_2"]] as const) {
+    await page.setViewportSize({ width, height: 760 });
+    await page.goto(`/agent/${id}`);
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Jobs/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: "New chat" })).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow, `${id} at ${width}px scrolls sideways by ${overflow}px`).toBeLessThanOrEqual(0);
+  }
   expect(api.unexpected).toEqual([]);
 });

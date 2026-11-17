@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { Dialog as D } from "radix-ui";
+import { Dialog as D, Popover } from "radix-ui";
 import { toast } from "sonner";
-import { Archive, ArchiveRestore, ListTodo, MessageSquareOff, MessagesSquare, MoreHorizontal, Pencil, Plus } from "lucide-react";
+import { Archive, ArchiveRestore, ChevronDown, ListTodo, MessageSquareOff, MoreHorizontal, Pencil, Plus } from "lucide-react";
 import { api, errorMessage } from "@/lib/api";
 import { cn, dateTime, relativeTime } from "@/lib/format";
-import { useDebounced, useHotkeys, useMediaQuery } from "@/lib/hooks";
+import { useDebounced, useHotkeys } from "@/lib/hooks";
 import { usePref } from "@/lib/prefs";
 import { keys, useAgentSession, useAgentState, useArchivedSessions, useSessionSearch } from "@/lib/queries";
 import type { AgentJob, AgentSessionSummary, AgentState } from "@/lib/types";
@@ -27,9 +27,11 @@ export default function AgentPage() {
   const client = useQueryClient();
   const state = useAgentState();
   const [savedId, setSavedId] = usePref("agentSessionId");
-  const [panel, setPanel] = useState<"chats" | "queue" | null>(null);
-  // Tablets keep the chat list; the Jobs panel opens from a button at every width, so the conversation keeps the room.
-  const showList = useMediaQuery("(min-width: 1024px)");
+  // The chat list (a dropdown under the title) and the Jobs panel open from the header at every width,
+  // so the conversation keeps the whole width.
+  const [chatsOpen, setChatsOpen] = useState(false);
+  const [jobsOpen, setJobsOpen] = useState(false);
+  const [archivedOpen, setArchivedOpen] = useState(false);
   const creating = useRef(false);
 
   const sessions = state.data?.sessions ?? [];
@@ -45,7 +47,7 @@ export default function AgentPage() {
 
   useEffect(() => { if (sessionId && sessionId !== savedId) setSavedId(sessionId); }, [sessionId, savedId, setSavedId]);
   useEffect(() => { if (!routeId && sessionId) navigate(`/agent/${sessionId}${location.search}`, { replace: true }); }, [routeId, sessionId, navigate]);
-  useEffect(() => setPanel(null), [sessionId]);
+  useEffect(() => { setChatsOpen(false); setJobsOpen(false); }, [sessionId]);
 
   async function newChat() {
     // The server hands back an existing empty chat instead of piling up blank ones.
@@ -77,21 +79,41 @@ export default function AgentPage() {
   });
 
   const activeCount = jobs.filter(isActive).length;
-  const conversations = <ConversationList sessions={sessions} jobs={jobs} activeId={sessionId} onNew={newChat} loading={state.isPending} />;
+  // Another chat is working or waiting for a script review: the title button shows a dot so it is not missed.
+  const elsewhere = jobs.some((j) => j.sessionId !== sessionId && (isActive(j) || j.status === "script_review"));
+  const conversations = (
+    <ConversationList sessions={sessions} jobs={jobs} activeId={sessionId} loading={state.isPending}
+      onNew={() => { setChatsOpen(false); void newChat(); }}
+      onOpenArchived={() => { setChatsOpen(false); setArchivedOpen(true); }} />
+  );
   const queue = <JobQueue jobs={jobs} totalJobs={state.data?.totalJobs ?? jobs.length} sessionId={sessionId} liveSessions={sessions} workerRunning={!!state.data?.workerRunning} />;
 
   return (
     <div className="flex h-full min-h-0">
-      {showList ? conversations : <Drawer side="left" label="Chats" open={panel === "chats"} onOpenChange={(o) => setPanel(o ? "chats" : null)}>{conversations}</Drawer>}
-
       <section className="flex min-w-0 flex-1 flex-col bg-bg" aria-label="Conversation">
-        <div className="flex h-14 shrink-0 items-center gap-2 border-b border-line bg-surface px-4">
-          {!showList && <IconButton label="Chats" size="icon-sm" onClick={() => setPanel("chats")}><MessagesSquare /></IconButton>}
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-base font-semibold text-fg">{summary?.title || "New chat"}</h1>
-            {summary && <p className="truncate text-xs text-fg-muted">Started {relativeTime(summary.createdAt)} · {summary.messageCount} messages</p>}
-          </div>
-          <Button size="sm" variant="secondary" onClick={() => setPanel("queue")}>
+        <div className="flex h-14 shrink-0 items-center gap-2 border-b border-line bg-surface px-3 sm:px-4">
+          <Popover.Root open={chatsOpen} onOpenChange={setChatsOpen}>
+            {/* The heading holds the button, so the title stays a real h1 and the button carries aria-expanded. */}
+            <h1 className="min-w-0 flex-1">
+              <Popover.Trigger asChild>
+                <button type="button" title="Switch chat" className="flex max-w-full items-center gap-1.5 rounded-lg py-1 pr-2 pl-2 text-left transition-colors hover:bg-subtle data-[state=open]:bg-subtle">
+                  <span className="truncate text-base font-semibold text-fg">{summary?.title || "New chat"}</span>
+                  <ChevronDown className="size-4 shrink-0 text-fg-muted" aria-hidden />
+                  {elsewhere && <span className="size-2 shrink-0 rounded-full bg-warning" title="Another chat needs attention" aria-hidden />}
+                </button>
+              </Popover.Trigger>
+            </h1>
+            <Popover.Portal>
+              <Popover.Content align="start" sideOffset={4} aria-label="Chats"
+                className="z-50 flex max-h-[min(72vh,34rem)] w-[min(94vw,24rem)] flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-lg animate-fade-in">
+                {conversations}
+              </Popover.Content>
+            </Popover.Portal>
+          </Popover.Root>
+          <Button size="sm" variant="ghost" aria-label="New chat" title="New chat (Alt+C)" onClick={() => void newChat()}>
+            <Plus /> <span className="hidden sm:inline">New chat</span>
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => setJobsOpen(true)}>
             <ListTodo /> Jobs {activeCount > 0 && <Badge tone="accent" dot pulse>{activeCount}</Badge>}
           </Button>
         </div>
@@ -114,7 +136,8 @@ export default function AgentPage() {
         {summary && <Composer sessionId={summary.id} busy={busy} hasMessages={summary.messageCount > 0} reviewPending={!!reviewJob} />}
       </section>
 
-      <Drawer side="right" label="Jobs" open={panel === "queue"} onOpenChange={(o) => setPanel(o ? "queue" : null)}>{queue}</Drawer>
+      <Drawer side="right" label="Jobs" open={jobsOpen} onOpenChange={setJobsOpen}>{queue}</Drawer>
+      <ArchivedChatsDialog open={archivedOpen} onOpenChange={setArchivedOpen} />
     </div>
   );
 }
@@ -140,26 +163,25 @@ function Drawer({ side, label, open, onOpenChange, children }:
   );
 }
 
-function ConversationList({ sessions, jobs, activeId, onNew, loading }: {
-  sessions: AgentSessionSummary[]; jobs: AgentJob[]; activeId?: string; onNew: () => void; loading: boolean;
+/** The body of the chat dropdown: search, New chat, the list, and a button for archived chats. */
+function ConversationList({ sessions, jobs, activeId, onNew, onOpenArchived, loading }: {
+  sessions: AgentSessionSummary[]; jobs: AgentJob[]; activeId?: string; onNew: () => void; onOpenArchived: () => void; loading: boolean;
 }) {
   const [query, setQuery] = useState("");
-  const [archivedOpen, setArchivedOpen] = useState(false);
   const q = query.trim().toLowerCase();
   // Titles and previews match instantly; the server searches full message histories.
   const remote = useSessionSearch(useDebounced(query, 250));
   const filtered = sessions.filter((s) => !q || s.title.toLowerCase().includes(q) || s.lastMessage?.text.toLowerCase().includes(q) || remote.data?.ids.includes(s.id));
   return (
-    <aside className="flex h-full w-72 shrink-0 flex-col border-r border-line bg-surface" aria-label="Chats">
-      <div className="space-y-3 border-b border-line p-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-fg">Chats <span className="tabular ml-1 font-normal text-fg-muted">{sessions.length}</span></h2>
-          <IconButton label="Archived chats" size="icon-sm" onClick={() => setArchivedOpen(true)}><Archive /></IconButton>
+    <>
+      <div className="space-y-2 border-b border-line p-2.5">
+        <div className="flex items-center gap-1.5">
+          <SearchInput value={query} onChange={setQuery} placeholder="Search chats" className="min-w-0 flex-1" />
+          <IconButton label="Archived chats" size="icon-sm" onClick={onOpenArchived}><Archive /></IconButton>
         </div>
-        <Button variant="primary" className="w-full" onClick={onNew} title="Alt+C"><Plus /> New chat</Button>
-        <SearchInput value={query} onChange={setQuery} placeholder="Search chats" />
+        <Button variant="secondary" className="w-full" onClick={onNew}><Plus /> New chat</Button>
       </div>
-      <nav className="min-h-0 flex-1 overflow-y-auto p-2">
+      <nav className="min-h-0 flex-1 overflow-y-auto p-2" aria-label="Chats">
         {loading && Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="mb-2 h-14" />)}
         {!loading && !filtered.length && <p className="px-3 py-8 text-center text-sm text-fg-muted">{q ? "No chats match." : "No chats yet."}</p>}
         <ul className="space-y-0.5">
@@ -168,8 +190,7 @@ function ConversationList({ sessions, jobs, activeId, onNew, loading }: {
           ))}
         </ul>
       </nav>
-      <ArchivedChatsDialog open={archivedOpen} onOpenChange={setArchivedOpen} />
-    </aside>
+    </>
   );
 }
 

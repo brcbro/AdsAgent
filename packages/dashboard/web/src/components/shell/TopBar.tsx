@@ -23,7 +23,7 @@ export function TopBar() {
   const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
 
   return (
-    <header className="relative z-30 flex h-14 shrink-0 items-center gap-3 border-b border-line bg-surface/90 px-3 backdrop-blur sm:px-4">
+    <header className="relative z-30 flex h-14 shrink-0 items-center gap-2 border-b border-line bg-surface/90 px-3 backdrop-blur sm:gap-3 sm:px-4">
       <NavLink to="/studio" className="flex items-center gap-2.5 rounded-md pr-2" aria-label="Ad Factory Studio home">
         <span className="grid size-8 place-items-center rounded-lg bg-accent text-accent-fg shadow-sm">
           <svg viewBox="0 0 24 24" className="size-4" fill="currentColor" aria-hidden><path d="M8 5.5v13l10.5-6.5z" /></svg>
@@ -33,13 +33,13 @@ export function TopBar() {
         </span>
       </NavLink>
 
-      <nav aria-label="Primary" className="mx-auto flex items-center gap-1 rounded-lg border border-line bg-subtle p-1">
+      <nav aria-label="Primary" className="mx-auto flex items-center gap-0.5 rounded-lg border border-line bg-subtle p-1 sm:gap-1">
         {NAV.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
             className={({ isActive }) => cn(
-              "relative inline-flex h-8 items-center gap-2 rounded-md px-3 text-sm font-medium transition-all duration-150",
+              "relative inline-flex h-8 items-center gap-2 rounded-md px-2.5 text-sm font-medium transition-all duration-150 sm:px-3",
               isActive ? "bg-surface text-fg shadow-sm" : "text-fg-muted hover:text-fg",
             )}
           >
@@ -66,7 +66,8 @@ export function TopBar() {
           <Kbd>{isMac ? "⌘" : "Ctrl"} K</Kbd>
         </button>
         <IconButton label="Search and commands" className="lg:hidden" onClick={() => shell.setPaletteOpen(true)}><Search /></IconButton>
-        <IconButton label="Keyboard shortcuts" onClick={() => shell.setShortcutsOpen(true)}><HelpCircle /></IconButton>
+        {/* Shortcuts are for keyboards; on a phone the room goes to the title and buttons. */}
+        <IconButton label="Keyboard shortcuts" className="max-sm:hidden" onClick={() => shell.setShortcutsOpen(true)}><HelpCircle /></IconButton>
         <IconButton label="Settings" onClick={() => navigate("/settings")}><Settings /></IconButton>
       </div>
     </header>
@@ -93,9 +94,10 @@ function RenderStatusPill() {
     <Popover.Root>
       <Popover.Trigger asChild>
         <button type="button" className="rounded-full" aria-label={`Studio status: ${label}`}>
-          <Badge tone={tone} dot pulse={rendering} className="h-7 px-2.5 text-sm">
-            {label}
-            {rendering && status.data?.startedAt && <span className="tabular text-accent/70">{elapsed(status.data.startedAt, now)}</span>}
+          <Badge tone={tone} dot pulse={rendering} className="h-7 px-2 text-sm sm:px-2.5">
+            {/* On a phone the dot alone carries the state (the button keeps its full name for screen readers). */}
+            <span className="max-sm:hidden">{label}</span>
+            {rendering && status.data?.startedAt && <span className="tabular text-accent/70 max-sm:hidden">{elapsed(status.data.startedAt, now)}</span>}
           </Badge>
         </button>
       </Popover.Trigger>
