@@ -7,7 +7,6 @@ import { api, errorMessage } from "@/lib/api";
 import { cn, relativeTime } from "@/lib/format";
 import { keys, useAdSeries, usePerformance, useTeardown } from "@/lib/queries";
 import { PatternsSection } from "./PatternsSection";
-import { SuggestionsSection } from "./SuggestionsSection";
 import { BriefingsSection } from "./BriefingsSection";
 import { MetaConnectionsDialog } from "./MetaConnectionsDialog";
 import type { AdPlatform, LeaderboardRow, NormalizationReport, PerformanceOverview, SyncReport, Teardown } from "@/lib/types";
@@ -117,7 +116,6 @@ export default function PerformancePage() {
           )}
         </section>
 
-        {d && !!d.leaderboard.length && <SuggestionsSection />}
         {d && !!d.leaderboard.length && <BriefingsSection llmConfigured={d.teardown.llmConfigured} />}
         {d && !!d.leaderboard.length && (
           <PatternsSection teardown={d.teardown} onRun={async () => {

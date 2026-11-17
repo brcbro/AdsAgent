@@ -80,24 +80,6 @@ test("winning patterns show lift and evidence, a pattern can be excluded, and an
   expect(api.unexpected).toEqual([]);
 });
 
-test("suggestions inbox separates account actions from brief ideas; accepting records the decision", async ({ page }) => {
-  const api = await mockApi(page);
-  await page.goto("/performance");
-  const section = page.getByTestId("perf-suggestions");
-  const cards = section.getByTestId("suggestion-card");
-  await expect(cards).toHaveCount(3);
-  await expect(section).toContainText("Account actions · 1");
-  await expect(section).toContainText("For the next brief · 2");
-  await expect(cards.first()).toContainText('Scale "proj_1_h1_c1_9x16"');
-  await expect(cards.first()).toContainText("hook rate 38.0% vs 21.0%");
-  await cards.first().getByRole("button", { name: "Accept" }).click();
-  expect(api.calls.some((c) => c.path === "/api/performance/suggestions/scale_1/accept")).toBe(true);
-  await page.getByRole("group", { name: "Suggestion status" }).getByRole("radio", { name: "Dismissed" }).click();
-  await expect(cards).toHaveCount(1);
-  await expect(cards.first()).toContainText('Pause "Old creative"');
-  expect(api.unexpected).toEqual([]);
-});
-
 test("Google card shows its configuration, and the platform strip explains the per-platform ranking", async ({ page }) => {
   const api = await mockApi(page);
   await page.goto("/performance");
@@ -113,13 +95,10 @@ test("Google card shows its configuration, and the platform strip explains the p
   expect(api.unexpected).toEqual([]);
 });
 
-test("accepted suggestions show their measured outcome; KB briefings list, generate, and hand off to the Agent", async ({ page }) => {
+test("the Performance page has no Suggestions section; KB briefings list, generate, and hand off to the Agent", async ({ page }) => {
   const api = await mockApi(page);
   await page.goto("/performance");
-  await page.getByRole("group", { name: "Suggestion status" }).getByRole("radio", { name: "Accepted" }).click();
-  const outcome = page.getByTestId("perf-suggestions").getByTestId("suggestion-outcome");
-  await expect(outcome).toContainText("Improved");
-  await expect(outcome).toContainText("hook 20.0% → 26.0%");
+  await expect(page.getByTestId("perf-suggestions")).toHaveCount(0);
 
   const briefings = page.getByTestId("perf-briefings");
   const card = briefings.getByTestId("briefing-card");
