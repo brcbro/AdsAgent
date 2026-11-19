@@ -67,6 +67,11 @@ export function agentClipPath(projectId: string): string {
   return path.join(AGENT_DIR, projectId, "main.mp4");
 }
 
+export function savedAvatarClip(projectId: string): string | undefined {
+  return [agentClipPath(projectId), path.join(adDir(projectId), "main.mp4")]
+    .find((file) => fs.existsSync(file));
+}
+
 export function ensureDir(dir: string): string {
   fs.mkdirSync(dir, { recursive: true });
   return dir;

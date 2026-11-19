@@ -27,7 +27,6 @@ export async function runAvatarPreview(id: string, onStage: (stage: "voice" | "a
   const reusable = fs.existsSync(source) && savedWords?.scriptDe === meta.scriptDe && savedWords?.voiceId === meta.avatar.voiceId
     && savedWords?.voiceModel === config.heygenVoiceModel();
   if (!reusable) {
-    if (fs.existsSync(source)) fs.unlinkSync(source);
     onStage("avatar", `Submitting or resuming HeyGen v3 presenter${meta.avatar.voiceName ? ` with voice "${meta.avatar.voiceName}"` : ""} (ElevenLabs ${config.heygenVoiceModel()})`);
     let previous = "";
     const { durationMs, subtitlesPath } = await generateAvatarClip(meta.scriptDe, source, {

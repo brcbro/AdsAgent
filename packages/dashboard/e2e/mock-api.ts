@@ -15,12 +15,12 @@ export function fixtures() {
       id: "proj_ready", title: "Trading FOMO — Hook A", scriptDe: "Trading ohne System ist riskant. Lerne klare Regeln. Melde dich heute an.",
       introMs: 6000, avatarZoom: 1, aspectRatio: "9:16", outputSpeed: 1, fullAvatar: false, avatar: { heygenAvatarId: "", name: "Local waveform preview" },
       music: { enabled: true, volume: 0.25, file: "data/music/a.mp3" }, captions: { presetId: "meta-clean", fontSize: 32, bottomPercent: 18 },
-      status: "done", createdAt: iso(120), updatedAt: iso(5), outputFile: "E:/video/proj_ready.mp4",
+      status: "done", createdAt: iso(120), updatedAt: iso(5), outputFile: "E:/video/proj_ready.mp4", hasSourceClip: true,
     },
     {
       id: "proj_draft", title: "Draft — Risk rules", scriptDe: "Drei Regeln für dein Risikomanagement.",
       introMs: 6000, avatarZoom: 1, aspectRatio: "9:16", avatar: { heygenAvatarId: "" },
-      captions: { presetId: "meta-clean", fontSize: 32 }, status: "draft", createdAt: iso(300), updatedAt: iso(60),
+      captions: { presetId: "meta-clean", fontSize: 32 }, status: "draft", createdAt: iso(300), updatedAt: iso(60), hasSourceClip: false,
     },
   ];
   const versions: Record<string, unknown[]> = {
@@ -108,6 +108,18 @@ export async function mockApi(page: Page) {
       return json(p);
     }
     if (method === "GET" && (m = path.match(/^\/api\/projects\/([^/]+)\/versions$/))) return json(data.versions[m[1]] ?? []);
+    if (method === "GET" && path.endsWith("/caption-preview")) return json({ error: "Caption preview unavailable" }, 404);
+    if (method === "POST" && path === "/api/render/cancel") {
+      const p = project((body as { projectId: string }).projectId);
+      if (p) p.status = p.outputFile ? "done" : "draft";
+      return json({ ok: true });
+    }
+    if (method === "POST" && (m = path.match(/^\/api\/projects\/([^/]+)\/recaption$/))) {
+      const p = project(m[1]);
+      if (!p?.hasSourceClip) return json({ error: "No saved source clip" }, 400);
+      p.status = "rendering";
+      return json({ ok: true });
+    }
     if (method === "POST" && path.endsWith("/download")) return json({ ok: true });
     if (method === "GET" && path.startsWith("/api/video/")) return route.fulfill({ status: 404, body: "" });
     if (method === "GET" && path.includes("/versions/") && path.endsWith("/video")) return route.fulfill({ status: 404, body: "" });

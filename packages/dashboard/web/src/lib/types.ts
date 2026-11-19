@@ -62,6 +62,7 @@ export interface Project {
   createdAt: string;
   updatedAt: string;
   outputFile?: string;
+  hasSourceClip?: boolean;
 }
 
 /** Fields the editor may change; everything else is owned by the server and pipeline. */

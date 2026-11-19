@@ -24,11 +24,11 @@ export function TopBar() {
 
   return (
     <header className="relative z-30 flex h-14 shrink-0 items-center gap-2 border-b border-line bg-surface/90 px-3 backdrop-blur sm:gap-3 sm:px-4">
-      <NavLink to="/studio" className="flex items-center gap-2.5 rounded-md pr-2" aria-label="Ad Factory Studio home">
-        <span className="grid size-8 place-items-center rounded-lg bg-accent text-accent-fg shadow-sm">
+      <NavLink to="/studio" className="flex shrink-0 items-center gap-2.5 rounded-md pr-2" aria-label="Ad Factory Studio home">
+        <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-accent text-accent-fg shadow-sm">
           <svg viewBox="0 0 24 24" className="size-4" fill="currentColor" aria-hidden><path d="M8 5.5v13l10.5-6.5z" /></svg>
         </span>
-        <span className="hidden text-base font-semibold tracking-tight text-fg sm:block">
+        <span className="hidden whitespace-nowrap text-base font-semibold tracking-tight text-fg lg:block">
           Ad Factory <span className="font-normal text-fg-muted">Studio</span>
         </span>
       </NavLink>

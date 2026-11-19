@@ -1,21 +1,8 @@
-import fs from "node:fs";
-import path from "node:path";
 import type express from "express";
-import { DEFAULT_MUSIC, REMOTION_PUBLIC_ADS, adDir, ProjectMetadata } from "@ai-ads/core";
+import { DEFAULT_MUSIC, ProjectMetadata, savedAvatarClip } from "@ai-ads/core";
 import { loadMetadata, saveMetadata } from "@ai-ads/pipeline";
 import type { DashboardContext } from "../context.js";
-import { renderState, startProduce } from "../render-state.js";
-
-function hasSourceClip(projectId: string): boolean {
-  return fs.existsSync(path.join(adDir(projectId), "main.mp4"));
-}
-
-function clearProjectCache(projectId: string): void {
-  const main = path.join(adDir(projectId), "main.mp4");
-  if (fs.existsSync(main)) fs.unlinkSync(main);
-  const pub = path.join(REMOTION_PUBLIC_ADS, projectId);
-  if (fs.existsSync(pub)) fs.rmSync(pub, { recursive: true, force: true });
-}
+import { renderState, restoreCanceledRender, startProduce, stopProduce } from "../render-state.js";
 
 function mergeMusic(meta: ProjectMetadata): NonNullable<ProjectMetadata["music"]> {
   return {
@@ -55,7 +42,6 @@ export function registerProductionRoutes(app: express.Express, ctx: DashboardCon
     if (!meta.createdAt) meta.createdAt = new Date().toISOString();
 
     saveMetadata(meta);
-    clearProjectCache(meta.id);
     startProduce(meta.id, { shuffleBroll: true });
 
     res.json({ ok: true, status: "started", id: meta.id });
@@ -66,7 +52,7 @@ export function registerProductionRoutes(app: express.Express, ctx: DashboardCon
     if (isRendering()) return res.status(409).json({ error: "A render is already in progress" });
 
     const meta = req.body as ProjectMetadata;
-    if (!hasSourceClip(req.params.id)) {
+    if (!savedAvatarClip(req.params.id)) {
       return res.status(400).json({
         error: "No saved source clip — create an avatar video first",
       });
@@ -97,30 +83,19 @@ export function registerProductionRoutes(app: express.Express, ctx: DashboardCon
     });
   });
 
-  app.post("/api/render/cancel", (req, res) => {
-    const projectId = String(req.body?.projectId ?? renderState.activeProjectId ?? "");
-    agentDashboard.cancelProject(projectId);
-    const child = renderState.activeChild;
-    if (child) {
-      child.kill("SIGTERM");
-      // Capture the child before it is cleared below, so the force-kill still reaches it.
-      setTimeout(() => child.kill("SIGKILL"), 1500);
-    }
-    renderState.rendering = false;
-    renderState.activeChild = null;
-    if (projectId) {
-      const meta = loadMetadata(projectId);
-      if (meta && meta.status !== "done") {
-        meta.status = "draft";
-        delete meta.error;
-        meta.updatedAt = new Date().toISOString();
-        saveMetadata(meta);
+  app.post("/api/render/cancel", async (req, res, next) => {
+    const projectId = String(req.body?.projectId ?? renderState.activeProjectId ?? agentDashboard.active()?.projectId ?? "");
+    try {
+      if (projectId === renderState.activeProjectId) await stopProduce();
+      else if (projectId === agentDashboard.active()?.projectId) await agentDashboard.cancelProject(projectId);
+      else if (!isRendering() && /^[A-Za-z0-9_-]+$/.test(projectId)) {
+        const meta = loadMetadata(projectId);
+        if (meta?.status === "generating" || meta?.status === "rendering") restoreCanceledRender(projectId);
       }
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
     }
-    renderState.activeProjectId = null;
-    renderState.startedAt = null;
-    renderState.lastLine = null;
-    res.json({ ok: true });
   });
 
   app.post("/api/projects/:id/render", async (req, res) => {

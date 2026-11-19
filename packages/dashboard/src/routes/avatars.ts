@@ -8,6 +8,16 @@ import {
 
 const VOICE_TTL_MS = 15 * 60_000;
 const voiceCache = new Map<string, { at: number; voices: HeyGenVoice[] }>();
+let privateRefresh: Promise<HeyGenAvatar[]> | undefined;
+
+function expiredImage(avatar: HeyGenAvatar): boolean {
+  try {
+    const expires = new URL(avatar.preview_image_url ?? "").searchParams.get("Expires");
+    return expires !== null && Number(expires) * 1000 <= Date.now() + 60_000;
+  } catch {
+    return false;
+  }
+}
 
 /** Voices are read live from HeyGen (cached briefly), so new clones show up without a manual refresh. */
 async function voices(type: "public" | "private", language: string | undefined, fresh: boolean): Promise<HeyGenVoice[]> {
@@ -33,11 +43,15 @@ export function registerAvatarRoutes(app: express.Express): void {
     let avatars: HeyGenAvatar[];
     if (ownership === "private") {
       // First visit: read the account's own avatars once instead of showing an empty tab.
-      if (!fs.existsSync(PRIVATE_AVATAR_CATALOG)) {
-        try { await refreshPrivateAvatarCatalog(); }
-        catch (e) { return res.status(502).json({ error: (e as Error).message }); }
-      }
       avatars = cachedPrivateAvatars();
+      if (!fs.existsSync(PRIVATE_AVATAR_CATALOG) || avatars.some(expiredImage)) {
+        try {
+          privateRefresh ??= refreshPrivateAvatarCatalog().finally(() => { privateRefresh = undefined; });
+          avatars = await privateRefresh;
+        } catch (e) {
+          return res.status(502).json({ error: (e as Error).message });
+        }
+      }
     } else avatars = cachedPublicAvatars();
     const q = String(req.query.q ?? "").toLowerCase().trim();
     if (req.query.portrait === "1") {

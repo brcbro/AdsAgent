@@ -4,9 +4,11 @@ import { sessionVideoFile, finalVideoFile, ensureDir } from "@ai-ads/core";
 
 /** Publish final MP4 to session folder + video/final/. */
 export function publishToVideoFolder(adId: string, renderPath: string): string {
-  ensureDir(path.dirname(sessionVideoFile(adId)));
-  fs.copyFileSync(renderPath, sessionVideoFile(adId));
-  ensureDir(path.dirname(finalVideoFile(adId)));
-  fs.copyFileSync(renderPath, finalVideoFile(adId));
+  for (const target of [sessionVideoFile(adId), finalVideoFile(adId)]) {
+    ensureDir(path.dirname(target));
+    const pending = `${target}.pending`;
+    fs.copyFileSync(renderPath, pending);
+    fs.renameSync(pending, target);
+  }
   return finalVideoFile(adId);
 }

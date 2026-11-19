@@ -108,7 +108,7 @@ export async function renderAd(
   const musicVol = music.enabled ? Math.max(0, Math.min(1, music.volume ?? 0.2)) : 0;
 
   const outDir = ensureDir(path.join(adDir(meta.id), "out"));
-  const outFile = path.join(outDir, "final.mp4");
+  const outFile = path.join(outDir, "final.pending.mp4");
 
   let stagedMusicPath: string | undefined;
   if (music.enabled) {
