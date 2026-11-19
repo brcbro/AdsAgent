@@ -23,6 +23,19 @@ test("opens the most recent project with its status and settings", async ({ page
   await expect(page.getByText("All changes saved")).toBeVisible();
 });
 
+test("stopping a render reveals the saved avatar clip and allows applying edits", async ({ page }) => {
+  const project = api.data.projects.find((p) => p.id === "proj_draft")!;
+  project.status = "rendering";
+  project.hasSourceClip = true;
+  await page.goto("/studio/proj_draft");
+  await page.getByRole("button", { name: "Stop render" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Stop render" }).click();
+  await expect(page.getByText("Saved avatar clip")).toBeVisible();
+  await page.getByRole("button", { name: "Apply edits", exact: true }).click();
+  await expect.poll(() => api.calls.some((call) => call.path === "/api/projects/proj_draft/recaption")).toBe(true);
+  expect(api.calls.some((call) => call.path.endsWith("/send"))).toBe(false);
+});
+
 test("autosaves script edits and only sends editable fields", async ({ page }) => {
   await page.goto("/studio/proj_draft");
   const script = page.getByLabel("German script");

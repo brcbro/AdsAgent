@@ -8,6 +8,7 @@ import { cn, relativeTime } from "@/lib/format";
 import { keys, useAdSeries, usePerformance, useTeardown } from "@/lib/queries";
 import { PatternsSection } from "./PatternsSection";
 import { BriefingsSection } from "./BriefingsSection";
+import { ScriptSuggestions } from "./ScriptSuggestions";
 import { MetaConnectionsDialog } from "./MetaConnectionsDialog";
 import type { AdPlatform, LeaderboardRow, NormalizationReport, PerformanceOverview, SyncReport, Teardown } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -116,6 +117,7 @@ export default function PerformancePage() {
           )}
         </section>
 
+        {d && !!d.leaderboard.length && <ScriptSuggestions llmConfigured={d.teardown.llmConfigured} winners={counts.winners} />}
         {d && !!d.leaderboard.length && <BriefingsSection llmConfigured={d.teardown.llmConfigured} />}
         {d && !!d.leaderboard.length && (
           <PatternsSection teardown={d.teardown} onRun={async () => {
@@ -201,8 +203,8 @@ function Sources({ data }: { data: PerformanceOverview }) {
 function SourceCard({ icon, title, status, detail, tone, footer, ...rest }: { icon: React.ReactNode; title: string; status: string; detail: React.ReactNode; tone: "neutral" | "success" | "info" | "warning" | "danger"; footer?: React.ReactNode; "data-testid"?: string }) {
   return (
     <div className="rounded-xl border border-line bg-surface p-4 shadow-xs" {...rest}>
-      <div className="flex items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-2 text-sm font-semibold text-fg [&_svg]:size-4 [&_svg]:text-fg-muted">{icon}{title}</span>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-2 whitespace-nowrap text-sm font-semibold text-fg [&_svg]:size-4 [&_svg]:text-fg-muted">{icon}{title}</span>
         <Badge tone={tone} dot>{status}</Badge>
       </div>
       <p className="mt-2 line-clamp-2 text-xs text-fg-muted" title={typeof detail === "string" ? detail : undefined}>{detail}</p>

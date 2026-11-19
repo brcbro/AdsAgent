@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type express from "express";
 import { cachedAvatars } from "../../../pipeline/src/avatar-catalog.js";
-import { ADS_DIR, CAPTION_PRESETS, DATA_DIR, DEFAULT_MUSIC, REPO_ROOT, SESSION_VIDEO_DIR, ProjectMetadata } from "@ai-ads/core";
+import { ADS_DIR, CAPTION_PRESETS, DATA_DIR, DEFAULT_MUSIC, REPO_ROOT, SESSION_VIDEO_DIR, ProjectMetadata, savedAvatarClip } from "@ai-ads/core";
 import {
   config, listProjects, listRenderVersions, loadMetadata, publishToVideoFolder, renderVersionFile, saveMetadata,
 } from "@ai-ads/pipeline";
@@ -22,8 +22,9 @@ function configured(...names: string[]): boolean {
 const SAFE_FILE = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9]+)+$/;
 
 /** Published copy first, then legacy folders, then the render inside the project folder itself. */
-function projectFile(id: string, file: string): string | null {
+export function projectFile(id: string, file: string): string | null {
   if (!PROJECT_ID.test(id) || !SAFE_FILE.test(file)) return null;
+  if (file === "source.mp4") return savedAvatarClip(id) ?? null;
   const flat = path.join(SESSION_VIDEO_DIR, `${id}.mp4`);
   if (file === "final.mp4" && fs.existsSync(flat)) return flat;
   for (const base of [
@@ -35,6 +36,10 @@ function projectFile(id: string, file: string): string | null {
     if (fs.existsSync(p)) return p;
   }
   return null;
+}
+
+function withSourceClip(meta: ProjectMetadata) {
+  return { ...meta, hasSourceClip: !!savedAvatarClip(meta.id) };
 }
 
 /** Project metadata, caption presets and model settings (no credentials). */
@@ -84,13 +89,13 @@ export function registerProjectRoutes(app: express.Express): void {
       updatedAt: now,
     });
     saveMetadata(meta);
-    res.json(meta);
+    res.json(withSourceClip(meta));
   });
 
   app.get("/api/projects/:id", (req, res) => {
     const meta = loadMetadata(req.params.id);
     if (!meta) return res.status(404).json({ error: "Not found" });
-    res.json(meta);
+    res.json(withSourceClip(meta));
   });
 
   // Editor saves: the URL decides the project, and pipeline-owned fields keep their on-disk values
@@ -110,7 +115,7 @@ export function registerProjectRoutes(app: express.Express): void {
     const result = ProjectMetadata.safeParse(merged);
     if (!result.success) return res.status(400).json({ error: "Invalid project settings", details: result.error.issues });
     saveMetadata(result.data);
-    res.json(result.data);
+    res.json(withSourceClip(result.data));
   });
 
   /** Archive instead of delete: the project folder and published MP4 move to data/archive and can be restored by hand. */
@@ -173,7 +178,7 @@ export function registerProjectRoutes(app: express.Express): void {
     });
     if (!restored.success) return res.status(400).json({ error: "This version's settings are no longer valid" });
     saveMetadata(restored.data);
-    res.json({ project: restored.data, scriptChanged: (version.settings.scriptDe ?? "") !== meta.scriptDe });
+    res.json({ project: withSourceClip(restored.data), scriptChanged: (version.settings.scriptDe ?? "") !== meta.scriptDe });
   });
 
   app.get("/api/caption-presets", (_req, res) => {
@@ -203,6 +208,27 @@ export function registerProjectRoutes(app: express.Express): void {
     const p = projectFile(req.params.id, "beats.json");
     if (!p) return res.json({ introMs: 6000, beats: [] });
     res.json(JSON.parse(fs.readFileSync(p, "utf-8")));
+  });
+
+  app.get("/api/projects/:id/caption-preview", (req, res) => {
+    if (!PROJECT_ID.test(req.params.id)) return res.status(400).json({ error: "Invalid project id" });
+    const dir = path.join(ADS_DIR, req.params.id);
+    const video = path.join(dir, "main.mp4");
+    const props = path.join(dir, "out", "render.props.json");
+    if (!fs.existsSync(video) || !fs.existsSync(props)) return res.status(404).json({ error: "The source video or caption timings are unavailable for this project." });
+    try {
+      const data = JSON.parse(fs.readFileSync(props, "utf8")) as { segments?: Array<{ words?: Array<{ word: string; startMs: number; endMs: number }> }> };
+      const words = data.segments?.[0]?.words;
+      if (!words?.length) return res.status(404).json({ error: "Caption timings are unavailable for this project." });
+      res.json({ words });
+    } catch { res.status(500).json({ error: "Could not read caption timings." }); }
+  });
+
+  app.get("/api/projects/:id/caption-preview/video", (req, res) => {
+    if (!PROJECT_ID.test(req.params.id)) return res.status(400).end();
+    const video = path.join(ADS_DIR, req.params.id, "main.mp4");
+    if (!fs.existsSync(video)) return res.status(404).end();
+    res.sendFile(video);
   });
 
   app.get("/api/video/:id/:file", (req, res) => {

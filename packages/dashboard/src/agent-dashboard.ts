@@ -1,16 +1,16 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawn, execFile, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import type express from "express";
 import { REPO_ROOT } from "@ai-ads/core";
-import { AgentStore, SCRIPT_MAX_CHARS, SCRIPT_MIN_CHARS } from "../../pipeline/src/agent-store.js";
+import { AgentStore, SCRIPT_MAX_CHARS, SCRIPT_MIN_CHARS, type AgentJob } from "../../pipeline/src/agent-store.js";
 import { CHARS_PER_SECOND, estimateScriptSeconds } from "../../pipeline/src/agent-script.js";
 import { cachedAvatars } from "../../pipeline/src/avatar-catalog.js";
 import { checkScriptCompliance } from "../../pipeline/src/compliance.js";
-import { loadMetadata, saveMetadata } from "../../pipeline/src/produce.js";
+import { restoreCanceledRender, stopProcessTree } from "./render-state.js";
 
 const JOB_PAGE = 50;
 
@@ -21,16 +21,17 @@ function reviewerName(): string {
 export function installAgentDashboard(app: express.Express, manualBusy: () => boolean) {
   const store = new AgentStore();
   let worker: ChildProcess | undefined;
+  let cancelingJob: AgentJob | undefined;
   let closing = false;
   const workerInfo = { restarts: -1, startedAt: undefined as string | undefined, lastExit: undefined as string | undefined, lastExitCode: null as number | null };
   const logPath = path.join(REPO_ROOT, "data", "agent-queue", "worker.log");
   const lockPath = path.join(REPO_ROOT, "data", "agent-queue", "manual-render.lock");
   const startWorker = () => {
-    if (closing || worker) return;
+    if (closing || worker || cancelingJob) return;
     const log = fs.openSync(logPath, "a");
     const child = spawn(process.execPath, ["--import", pathToFileURL(createRequire(import.meta.url).resolve("tsx")).href,
       path.join(REPO_ROOT, "packages", "pipeline", "src", "agent-worker.ts")], {
-      cwd: REPO_ROOT, windowsHide: true, stdio: ["ignore", log, log],
+      cwd: REPO_ROOT, detached: process.platform !== "win32", windowsHide: true, stdio: ["ignore", log, log],
     });
     worker = child;
     workerInfo.restarts++; workerInfo.startedAt = new Date().toISOString();
@@ -42,10 +43,7 @@ export function installAgentDashboard(app: express.Express, manualBusy: () => bo
     child.on("error", err => { fs.appendFileSync(logPath, `Worker launch failed: ${err.message}\n`); if (worker === child) worker = undefined; });
   };
   function stopWorker() {
-    const child = worker; worker = undefined;
-    if (!child?.pid) return;
-    if (process.platform === "win32") execFile("taskkill", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true }, () => {});
-    else child.kill("SIGTERM");
+    return worker ? stopProcessTree(worker) : Promise.resolve();
   }
   const timer = setInterval(() => {
     if (manualBusy()) fs.writeFileSync(lockPath, String(Date.now()));
@@ -153,19 +151,26 @@ export function installAgentDashboard(app: express.Express, manualBusy: () => bo
   app.post("/api/agent/jobs/:id/reopen", (req, res) => {
     try { res.json(store.reopenScript(req.params.id)); } catch (err) { fail(res, err); }
   });
-  const cancel = (id: string) => {
-    const job = store.job(id); const wasRunning = job?.status === "running";
+  const active = () => cancelingJob ?? store.jobs({ limit: 1 }).find(job => job.status === "running");
+  const cancel = async (id: string) => {
+    const job = store.job(id);
     const result = store.cancel(id);
-    if (wasRunning) stopWorker();
-    const meta = job && loadMetadata(job.projectId);
-    if (meta && meta.status !== "done") { meta.status = "draft"; delete meta.error; meta.updatedAt = new Date().toISOString(); saveMetadata(meta); }
+    if (job?.status === "running") {
+      cancelingJob = job;
+      try {
+        await stopWorker();
+        restoreCanceledRender(job.projectId);
+      } finally {
+        cancelingJob = undefined;
+      }
+    }
     return result;
   };
-  app.post("/api/agent/jobs/:id/cancel", (req, res) => { try { res.json(cancel(req.params.id)); } catch (err) { fail(res, err); } });
+  app.post("/api/agent/jobs/:id/cancel", async (req, res) => { try { res.json(await cancel(req.params.id)); } catch (err) { fail(res, err); } });
   return {
     start: startWorker,
-    active: () => store.jobs({ limit: 1 }).find(job => job.status === "running"),
-    cancelProject: (id: string) => { const job = store.jobs({ limit: 1 }).find(job => job.projectId === id && job.status === "running"); if (job) cancel(job.id); },
-    close: () => { if (closing) return; closing = true; clearInterval(timer); stopWorker(); store.close(); },
+    active,
+    cancelProject: async (id: string) => { const job = active(); if (job?.projectId === id && !cancelingJob) await cancel(job.id); },
+    close: () => { if (closing) return; closing = true; clearInterval(timer); void stopWorker().catch(console.error); store.close(); },
   };
 }

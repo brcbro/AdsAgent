@@ -9,6 +9,7 @@ import {
   type AdScore, type MetaConnectionInput, type PlatformAd, type SuggestionKind, type SyncReport, type TeardownReport,
 } from "@ai-ads/performance";
 import { generateAndSaveBriefings, listKbBriefings } from "../../../pipeline/src/briefings-from-kb.js";
+import { suggestPerformanceScripts } from "../../../pipeline/src/performance-scripts.js";
 import { llmConfigured, teardownDeps } from "../teardown-deps.js";
 
 export interface LeaderboardRow extends AdScore {
@@ -219,6 +220,29 @@ export function registerPerformanceRoutes(app: express.Express): { close: () => 
 
   /** KB-driven briefings: one LLM call writes `count` briefing files into data/briefings/. */
   app.get("/api/performance/briefings", (_req, res) => { res.json({ briefings: listKbBriefings() }); });
+  app.post("/api/performance/scripts", async (req, res) => {
+    if (!llmConfigured()) { res.status(400).json({ error: "Configure an LLM key to generate scripts." }); return; }
+    const scores = store.scores().filter((score) => score.isWinner).sort((a, b) => b.percentile - a.percentile);
+    if (!scores.length) { res.status(400).json({ error: "No winning ads are available yet. Sync performance data first." }); return; }
+    const teardowns = new Map(store.teardowns().map((t) => [t.adId, t]));
+    const winners = scores.flatMap((score) => {
+      const teardown = teardowns.get(score.adId);
+      const ad = store.ad(score.adId);
+      if (!ad || teardown?.status !== "done" || !teardown.structure?.hookText) return [];
+      return [{ id: ad.id, name: ad.name, platform: ad.platform, score: score.score, percentile: score.percentile,
+        hookRate: score.hookRate, holdRate: score.holdRate, ctr: score.ctr,
+        structure: teardown.structure, visual: teardown.visual }];
+    }).slice(0, 8);
+    if (!winners.length) { res.status(400).json({ error: "No winning ads have an analysed script yet. Open a winning ad and run its teardown. Link a Studio project or provide a transcript if needed." }); return; }
+    try {
+      const context = typeof req.body?.context === "string" ? req.body.context.trim().slice(0, 1000) : "";
+      const result = await suggestPerformanceScripts(winners, context);
+      const ids = new Set(winners.map((winner) => winner.id));
+      const scripts = result.scripts.filter((script) => script.sourceAdIds.every((id) => ids.has(id)));
+      if (!scripts.length) throw new Error("The generated scripts did not reference the supplied winners. Please try again.");
+      res.json({ scripts, sources: winners.map(({ id, name }) => ({ id, name })) });
+    } catch (err) { res.status(500).json({ error: err instanceof Error ? err.message : String(err) }); }
+  });
   app.post("/api/performance/briefings", async (req, res) => {
     if (!llmConfigured()) { res.status(400).json({ error: "No LLM key configured (ANTHROPIC_API_KEY or OPENROUTER_API_KEY)" }); return; }
     const count = Math.max(1, Math.min(10, Number(req.body?.count) || 3));

@@ -200,9 +200,9 @@ export async function generateAvatarClip(scriptOrAudioPath: string, outPath: str
   const video = await fetch(done.videoUrl, { signal: AbortSignal.timeout(120_000) });
   if (!video.ok) throw new Error(`HeyGen video download failed: ${video.status}`);
   fs.writeFileSync(`${outPath}.download`, Buffer.from(await video.arrayBuffer()));
-  await probeDurationMs(`${outPath}.download`);
+  const durationMs = await probeDurationMs(`${outPath}.download`);
   fs.renameSync(`${outPath}.download`, outPath);
-  return { durationMs: await probeDurationMs(outPath), subtitlesPath };
+  return { durationMs, subtitlesPath };
 }
 async function probeDurationMs(file: string): Promise<number> {
   const { stdout } = await run("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", file]);

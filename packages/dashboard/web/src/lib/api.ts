@@ -40,6 +40,8 @@ async function request<T>(path: string, init?: RequestInit & { json?: unknown })
 const enc = encodeURIComponent;
 
 export const api = {
+  captionPreview: (id: string) => request<{ words: Array<{ word: string; startMs: number; endMs: number }> }>(`/api/projects/${enc(id)}/caption-preview`),
+  performanceScripts: (context: string) => request<{ scripts: Array<{ title: string; script: string; rationale: string; sourceAdIds: string[] }>; sources: Array<{ id: string; name: string }> }>("/api/performance/scripts", { json: { context } }),
   projects: () => request<Project[]>("/api/projects"),
   project: (id: string) => request<Project>(`/api/projects/${enc(id)}`),
   createProject: (body: Partial<Project>) => request<Project>("/api/projects", { json: body }),

@@ -1,18 +1,20 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Gauge, Maximize, Minimize, Pause, Play, Repeat, Volume2, VolumeX } from "lucide-react";
-import { videoUrl } from "@/lib/api";
+import { api, videoUrl } from "@/lib/api";
 import { cn, timecode } from "@/lib/format";
 import { useHotkeys } from "@/lib/hooks";
 import { usePresets } from "@/lib/queries";
 import { IconButton } from "@/components/ui/button";
 import { Menu } from "@/components/ui/menu";
 import { useStudio } from "./studio-context";
+import { captionCss } from "./captionStyle";
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const FRAME = 1 / 30;
 
-export function VideoPlayer() {
-  const { project, videoVersion, adjustingCaptions } = useStudio();
+export function VideoPlayer({ sourceClip = false }: { sourceClip?: boolean }) {
+  const { project, draft, videoVersion, adjustingCaptions, inspectorTab } = useStudio();
   const video = useRef<HTMLVideoElement>(null);
   const frame = useRef<HTMLDivElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -25,7 +27,26 @@ export function VideoPlayer() {
   const [fullscreen, setFullscreen] = useState(false);
   const [ratio, setRatio] = useState(project.aspectRatio === "9:16" ? 9 / 16 : 16 / 9);
   const [failed, setFailed] = useState(false);
-  const src = videoUrl(project.id, videoVersion);
+  const [livePreview, setLivePreview] = useState(false);
+  const [previewHeight, setPreviewHeight] = useState(0);
+  const previewFrame = useRef<HTMLDivElement>(null);
+  const preview = useQuery({ queryKey: ["caption-preview", project.id, videoVersion], queryFn: () => api.captionPreview(project.id), enabled: !sourceClip, retry: false });
+  const presets = usePresets().data ?? [];
+  const captions = draft.draft?.captions;
+  const preset = presets.find((p) => p.id === (captions?.presetId ?? "meta-clean"));
+  const previewActive = !sourceClip && livePreview && !!preview.data;
+  const src = sourceClip
+    ? `/api/video/${encodeURIComponent(project.id)}/source.mp4?v=${encodeURIComponent(project.updatedAt)}`
+    : previewActive ? `/api/projects/${encodeURIComponent(project.id)}/caption-preview/video?v=${encodeURIComponent(videoVersion ?? "")}` : videoUrl(project.id, videoVersion);
+
+  useEffect(() => { if (inspectorTab === "captions" && preview.data) setLivePreview(true); }, [inspectorTab, preview.data]);
+  useEffect(() => {
+    const element = previewFrame.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() => setPreviewHeight(element.clientHeight));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => { setFailed(false); }, [src]);
   useEffect(() => {
@@ -54,15 +75,20 @@ export function VideoPlayer() {
     f: toggleFullscreen,
   }, !adjustingCaptions);
 
-  useEffect(() => { if (v()) v()!.playbackRate = rate; }, [rate]);
+  useEffect(() => { if (v()) v()!.playbackRate = rate * (previewActive ? (draft.draft?.outputSpeed ?? 1) : 1); }, [rate, previewActive, draft.draft?.outputSpeed]);
   useEffect(() => { if (v()) { v()!.muted = muted; v()!.volume = volume; } }, [muted, volume]);
 
   const fill = duration ? (time / duration) * 100 : 0;
+  const words = preview.data?.words ?? [];
+  const activeWord = words.findIndex((word) => time * 1000 >= word.startMs && time * 1000 < Math.max(word.endMs, word.startMs + 80));
+  const captionText = activeWord < 0 ? "" : preset?.mode === "word" ? words[activeWord].word : words.slice(Math.floor(activeWord / 5) * 5, Math.floor(activeWord / 5) * 5 + 5).map((word) => word.word).join(" ");
+  const previewRatio = draft.draft?.aspectRatio === "9:16" ? 9 / 16 : 16 / 9;
+  const frameRatio = previewActive ? previewRatio : ratio;
 
   return (
     <div ref={frame} className="flex min-h-0 flex-1 flex-col bg-stage">
       <div className="relative flex min-h-0 flex-1 items-center justify-center p-4" style={{ containerType: "size" }}>
-        <div className="relative max-h-full max-w-full" style={{ aspectRatio: ratio, width: `min(100cqw, calc(100cqh * ${ratio}))` }}>
+        <div ref={previewFrame} className="relative max-h-full max-w-full" style={{ aspectRatio: frameRatio, width: `min(100cqw, calc(100cqh * ${frameRatio}))` }}>
           {failed ? (
             <div className="grid size-full place-items-center rounded-lg bg-stage-raised p-6 text-center text-sm text-white/60">
               The video file couldn't be loaded. It may have been moved — try Apply edits to render it again.
@@ -82,14 +108,20 @@ export function VideoPlayer() {
                 const el = e.currentTarget;
                 setDuration(el.duration);
                 if (el.videoWidth && el.videoHeight) setRatio(el.videoWidth / el.videoHeight);
-                el.playbackRate = rate;
+                el.playbackRate = rate * (previewActive ? (draft.draft?.outputSpeed ?? 1) : 1);
               }}
               onError={() => setFailed(true)}
-              className="size-full cursor-pointer rounded-lg bg-black object-contain shadow-lg"
+              className={cn("size-full cursor-pointer rounded-lg bg-black shadow-lg", previewActive ? "object-cover" : "object-contain")}
               aria-label={`${project.title} video`}
             />
           )}
-          {adjustingCaptions && <CaptionPositionOverlay ratio={ratio} />}
+          {previewActive && preset && captions?.presetId !== "none" && captionText && (
+            <div className="pointer-events-none absolute inset-x-[4%] text-center" style={{ bottom: `${captions?.bottomPercent ?? preset.bottomPercent}%` }}>
+              <span style={captionCss({ ...preset, color: captions?.color ?? preset.color, background: captions?.background ?? preset.background },
+                (captions?.fontSize ?? preset.fontSize) * previewHeight / (previewRatio < 1 ? 1920 : 1080))}>{captionText}</span>
+            </div>
+          )}
+          {adjustingCaptions && <CaptionPositionOverlay ratio={frameRatio} />}
         </div>
       </div>
 
@@ -143,6 +175,11 @@ export function VideoPlayer() {
         <IconButton label={fullscreen ? "Exit fullscreen (F)" : "Fullscreen (F)"} variant="on-dark" size="icon-sm" onClick={toggleFullscreen}>
           {fullscreen ? <Minimize /> : <Maximize />}
         </IconButton>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 bg-stage-raised px-3 pb-2 text-xs text-white/70">
+        <span>{sourceClip ? "Saved avatar clip" : previewActive ? "Live caption preview · presenter footage and saved voice; final video includes your edits" : "Showing the last rendered video"}</span>
+        {!sourceClip && preview.data ? <button type="button" className="font-medium text-white underline" onClick={() => setLivePreview(!livePreview)}>{previewActive ? "Show rendered video" : "Preview captions live"}</button>
+          : preview.isError && inspectorTab === "captions" ? <span>Live caption preview unavailable for this project.</span> : null}
       </div>
     </div>
   );

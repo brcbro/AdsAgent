@@ -9,6 +9,7 @@ import {
   REPO_ROOT,
   ADS_DIR,
   agentClipPath,
+  savedAvatarClip,
   adDir,
   ensureDir,
   estimateDurationMs,
@@ -94,16 +95,12 @@ export async function runProduce(
 
   const adAvatarPath = path.join(dir, "main.mp4");
   const agentAvatarPath = agentClipPath(meta.id);
-  const savedClip = skipHeygen
-    ? [agentAvatarPath, adAvatarPath].find((p) => fs.existsSync(p))
-    : undefined;
-  if (skipHeygen && !savedClip) {
-    throw new Error("No saved source clip. Create an avatar video first.");
-  }
   let avatarPath = agentAvatarPath;
 
   if (skipHeygen) {
-    avatarPath = savedClip!;
+    const savedClip = savedAvatarClip(meta.id);
+    if (!savedClip) throw new Error("No saved source clip. Create an avatar video first.");
+    avatarPath = savedClip;
     const source = avatarPath === agentAvatarPath ? "agent" : "ads";
     console.log(`[${meta.id}] Reusing saved source clip (${source})`);
     seg.durationMs = await probeDurationMs(avatarPath);
@@ -216,15 +213,17 @@ export async function runProduce(
     renderPath = await applyOutputSpeed(renderPath, speed);
     console.log(`[${meta.id}] Final export ${speed}× speed (avatar + music + B-roll)`);
   }
-  meta.outputFile = renderPath;
+  const finalPath = path.join(path.dirname(renderPath), "final.mp4");
+  fs.renameSync(renderPath, finalPath);
+  const out = publishToVideoFolder(meta.id, finalPath);
+  meta.outputFile = finalPath;
   meta.status = "done";
   meta.updatedAt = new Date().toISOString();
   saveMetadata(meta);
 
-  const out = publishToVideoFolder(meta.id, renderPath);
   // History is a convenience: a failed copy must not fail an otherwise finished render.
   try {
-    saveRenderVersion(meta, renderPath);
+    saveRenderVersion(meta, finalPath);
   } catch (err) {
     console.warn(`[${meta.id}] Could not save render version: ${(err as Error).message}`);
   }
@@ -271,7 +270,10 @@ export function loadMetadata(id: string): ProjectMetadata | null {
 
 export function saveMetadata(meta: ProjectMetadata): void {
   ensureDir(adDir(meta.id));
-  fs.writeFileSync(metadataPath(meta.id), JSON.stringify(meta, null, 2));
+  const target = metadataPath(meta.id);
+  const pending = `${target}.${process.pid}.tmp`;
+  fs.writeFileSync(pending, JSON.stringify(meta, null, 2));
+  fs.renameSync(pending, target);
 }
 
 export function listProjects(): string[] {

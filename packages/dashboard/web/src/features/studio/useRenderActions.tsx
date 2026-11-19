@@ -52,11 +52,11 @@ export function useRenderActions(project: Project | undefined, draft: DraftApi) 
     apply: !project ? "Select a project"
       : draft.busy ? "This project is rendering"
       : otherRender ? "Another video is rendering — wait for it to finish"
-      : project.status !== "done" ? "Render a video first — Apply edits reuses its voice and footage"
+      : !project.hasSourceClip ? "Create an avatar video first — Apply edits reuses its voice and footage"
       : null,
   };
 
-  const primary: RenderAction = project?.status === "done" ? "apply" : "avatar";
+  const primary: RenderAction = project?.hasSourceClip ? "apply" : "avatar";
 
   async function confirmSpend(action: RenderAction): Promise<boolean> {
     const prefs = getPrefs();
@@ -96,7 +96,7 @@ export function useRenderActions(project: Project | undefined, draft: DraftApi) 
     if (!project) return;
     const ok = await confirm({
       title: "Stop this render?",
-      description: "The current render is cancelled and the project returns to draft. API calls already made are still billed.",
+      description: "Any saved avatar clip and finished video stay available. HeyGen requests already submitted can still complete and incur charges.",
       confirmLabel: "Stop render",
       tone: "danger",
     });

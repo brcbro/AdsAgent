@@ -93,6 +93,8 @@ function StageBody() {
     );
   }
 
+  if (project.hasSourceClip) return <VideoPlayer sourceClip />;
+
   const avatarImage = draft.draft?.avatar?.previewImageUrl;
   if (avatarImage) {
     return (
